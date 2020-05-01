@@ -88,6 +88,7 @@ def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
     for i in range(1, pagesCount + 1):
         for url in incrementalUrls:
             urlForRequest = getIncrementalUrl(url, i)
+            print(urlForRequest)
             pageContent = httpget(urlForRequest)
             links = getLinksFromPageContent(pageContent)
             allLinks = allLinks.union(links)
@@ -106,7 +107,7 @@ def main(args):
     #linksFilePath = str(args[1])
     #pagesCount = int(args[2])
     linksFilePath = "links.txt"
-    pagesCount = 5
+    pagesCount = 4
 
     file = open(linksFilePath, "r")
     fileLines = file.readlines()
