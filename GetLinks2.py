@@ -59,10 +59,12 @@ def isIncrementalUrl(url):
 def getLinksFromPageContent(pageContent):
     soup = BeautifulSoup(pageContent, 'html.parser')
     links = set()
+    #links = []
 
     for a in soup.find_all('a'):
         url = a.get('href')
         links.add(url)
+        #links.append(url)
 
     return links
 
@@ -85,15 +87,36 @@ def getLinks(regularUrls):
 
 def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
     allLinks = set()
-    for i in range(1, pagesCount + 1):
-        for url in incrementalUrls:
+    #allLinks = []
+    for url in incrementalUrls:
+        for i in range(1, pagesCount + 1):
             urlForRequest = getIncrementalUrl(url, i)
             print(urlForRequest)
-            pageContent = httpget(urlForRequest)
-            links = getLinksFromPageContent(pageContent)
-            allLinks = allLinks.union(links)
 
-    saveToFile(workSessionFolder, allLinks)
+            startTime = time.time()
+            pageContent = httpget(urlForRequest)
+            endTime = time.time()
+            print("httpget: {0}".format(endTime - startTime))
+
+            startTime = time.time()
+            links = getLinksFromPageContent(pageContent)
+            endTime = time.time()
+            print("getLinksFromPageContent: {0}".format(endTime - startTime))
+
+            startTime = time.time()
+            allLinks = allLinks.union(links)
+            #allLinks.extend(links)
+            #print("allLinks.extend(links): {0}".format(endTime - startTime))
+            print("allLinks.union(links): {0}".format(endTime - startTime))
+            endTime = time.time()
+
+    startTime = time.time()
+    allLinksAsSet = allLinks
+    #allLinksAsSet = set(allLinks)
+    print("list to set: {0}".format(endTime - startTime))
+    endTime = time.time()
+
+    saveToFile(workSessionFolder, allLinksAsSet)
 
 def validateArgs(args):
     if (args[1] is None or args[2] is None):
@@ -106,8 +129,9 @@ def main(args):
 
     #linksFilePath = str(args[1])
     #pagesCount = int(args[2])
-    linksFilePath = "links.txt"
-    pagesCount = 4
+    linksFilePath = "links2.txt"
+    #linksFilePath = "links.txt"
+    pagesCount = 10
 
     file = open(linksFilePath, "r")
     fileLines = file.readlines()
