@@ -38,15 +38,6 @@ def httpget(url):
     time.sleep(3)
     return cdi.page_source
 
-def isResponseOK(resp):
-    """
-    Returns True if the response seems to be HTML, False otherwise.
-    """
-    content_type = resp.headers['Content-Type'].lower()
-    return (resp.status_code == 200
-            and content_type is not None
-            and content_type.find('html') > -1)
-
 def getIncrementalUrl(url, i):
     return url.replace("{0}", str(i))
 
@@ -59,12 +50,10 @@ def isIncrementalUrl(url):
 def getLinksFromPageContent(pageContent):
     soup = BeautifulSoup(pageContent, 'html.parser')
     links = set()
-    #links = []
 
     for a in soup.find_all('a'):
         url = a.get('href')
         links.add(url)
-        #links.append(url)
 
     return links
 
@@ -87,7 +76,6 @@ def getLinks(regularUrls):
 
 def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
     allLinks = set()
-    #allLinks = []
     for url in incrementalUrls:
         for i in range(1, pagesCount + 1):
             urlForRequest = getIncrementalUrl(url, i)
@@ -105,18 +93,10 @@ def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
 
             startTime = time.time()
             allLinks = allLinks.union(links)
-            #allLinks.extend(links)
-            #print("allLinks.extend(links): {0}".format(endTime - startTime))
             print("allLinks.union(links): {0}".format(endTime - startTime))
             endTime = time.time()
 
-    startTime = time.time()
-    allLinksAsSet = allLinks
-    #allLinksAsSet = set(allLinks)
-    print("list to set: {0}".format(endTime - startTime))
-    endTime = time.time()
-
-    saveToFile(workSessionFolder, allLinksAsSet)
+    saveToFile(workSessionFolder, allLinks)
 
 def validateArgs(args):
     if (args[1] is None or args[2] is None):
@@ -129,8 +109,8 @@ def main(args):
 
     #linksFilePath = str(args[1])
     #pagesCount = int(args[2])
-    linksFilePath = "links2.txt"
-    #linksFilePath = "links.txt"
+    #linksFilePath = "links2.txt"
+    linksFilePath = "links.txt"
     pagesCount = 10
 
     file = open(linksFilePath, "r")
