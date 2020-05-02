@@ -79,6 +79,7 @@ def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
     for url in incrementalUrls:
         for i in range(1, pagesCount + 1):
             urlForRequest = getIncrementalUrl(url, i)
+
             print(urlForRequest)
 
             startTime = time.time()
