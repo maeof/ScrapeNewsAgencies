@@ -314,10 +314,11 @@ class SimpleContentScraper:
     def isArticleCompliant(self, allMatches):
         isCompliant = False
 
-        for matches in allMatches:
-            if len(matches) > 0:
-                isCompliant = True
-                break
+        for i in range(0, len(self._regexCompliancePatterns)):
+            for matches in allMatches[i]:
+                if len(matches) > 0:
+                    isCompliant = True
+                    break
 
         return isCompliant
 
