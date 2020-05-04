@@ -278,9 +278,9 @@ def main(args):
     fifteenLinks = fifteenLinkScraper.getLinks(multiprocessing.cpu_count()) #TODO: move cpu_count() to constructor __init__
     saveToFile(workSessionFolder, fifteenLinks)
 
-    delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
-    delfiLinks = delfiLinkScraper.getLinks(multiprocessing.cpu_count())
-    saveToFile(workSessionFolder, delfiLinks)
+    #delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    #delfiLinks = delfiLinkScraper.getLinks(multiprocessing.cpu_count())
+    #saveToFile(workSessionFolder, delfiLinks)
 
     #print(b.instanceMethod())
 

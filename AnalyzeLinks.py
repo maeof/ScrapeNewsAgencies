@@ -236,14 +236,15 @@ class SimpleContentScraper:
         return cleanedEntries
 
     def getDataSetHeader(self):
-        dataSetHeader = ["Title", "Category", "Date published", "Date modified", "Author", "Author position"]
+        dataSetHeader = ["Source", "Title", "Category", "Date published", "Date modified", "Author", "Author position"]
         for pattern in self._regexCompliancePatterns:
             dataSetHeader.append("Count of {0}".format(pattern))
         dataSetHeader.append("Url")
         return dataSetHeader
 
     def processUrl(self, url):
-        pageContent = httpget(self.cleanurl(url))
+        cleanUrl = self.cleanurl(url)
+        pageContent = httpget(cleanUrl)
 
         result = []
         if pageContent is not None:
@@ -251,6 +252,7 @@ class SimpleContentScraper:
             allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
 
             if self.isArticleCompliant(allMatches):
+                result.append(self.getSourceHostname(cleanUrl))
                 result.append(contentScraperStrategy.getArticleTitle())
                 result.append(contentScraperStrategy.getArticleCategory())
                 result.append(contentScraperStrategy.getArticleDatePublished())
@@ -258,9 +260,12 @@ class SimpleContentScraper:
                 result.append(contentScraperStrategy.getArticleAuthor())
                 result.append(contentScraperStrategy.getArticleAuthorPosition())
                 result = self.getPatternMatchesColumns(result, allMatches)
-                result.append(self.cleanurl(url))
+                result.append(cleanUrl)
 
         return result
+
+    def getSourceHostname(self, url):
+        return urlparse(url).hostname
 
     def getPatternMatchesColumns(self, currentResult, allPatternMatches):
         for i in range(0, len(self._regexCompliancePatterns)):
@@ -324,7 +329,7 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
-    regexCompliancePatterns = [r"(skandal.*?\b)", r"(nuog.*?\b)"]
+    regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, cpuCount, regexCompliancePatterns)
     scrapeResult = simpleContentScraper.scrape()
