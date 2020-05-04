@@ -229,6 +229,8 @@ class DelfiLinkScraper(LinkScraperAbstract):
 
         return links
 
+#class LrytasLinkScraper(LinkScraperAbstract): TODO: implement for LRytas
+
 class SimpleLinkScraper:
     def __init__(self, linkScraperStrategy):
         self._linkScraperStrategy = linkScraperStrategy
@@ -263,7 +265,6 @@ def main(args):
     workSessionFolder = createWorkSessionFolder(workFolder)
 
     fromDate = date(2019, 1, 1)
-    #toDate = date(2019, 12, 31)
     toDate = date(2019, 12, 31)
 
     fifteenSeedUrl = "https://www.15min.lt/naujienos/aktualu/lietuva"
@@ -273,9 +274,9 @@ def main(args):
     delfiParams = "?fromd={0}&tod={1}&channel=1&category=0&query=&page={2}" #delfi date in format: day.month.year
     delfiIterationsCount = 866
 
-    #fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
-    #fifteenLinks = fifteenLinkScraper.getLinks(multiprocessing.cpu_count())
-    #saveToFile(workSessionFolder, fifteenLinks)
+    fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
+    fifteenLinks = fifteenLinkScraper.getLinks(multiprocessing.cpu_count()) #TODO: move cpu_count() to constructor __init__
+    saveToFile(workSessionFolder, fifteenLinks)
 
     delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
     delfiLinks = delfiLinkScraper.getLinks(multiprocessing.cpu_count())

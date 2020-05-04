@@ -1,4 +1,9 @@
+import abc
+import csv
+
 from urllib.parse import urlparse
+
+from GetLinks3 import httpget
 from requests import get
 from requests.exceptions import RequestException
 from contextlib import closing
@@ -112,6 +117,148 @@ def processUrl(url, outputFolder):
         pageContentFile.writelines(pageContent)
         pageContentFile.close()
 
+class ContentScraperAbstract(object):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def getArticleDatePublished(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleDateModified(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleTitle(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleCategory(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleAuthor(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleAuthorPosition(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getArticleScope(self):
+        """Required Method"""
+
+class FifteenContentScraper(ContentScraperAbstract):
+    def __init__(self, url, pageContent):
+        self._url = url
+        self._pageContent = pageContent
+        self._soup = BeautifulSoup(pageContent, "html.parser")
+
+    def getArticleDatePublished(self):
+        datePublishedTag = self._soup.find("meta", attrs={"itemprop":"datePublished"})
+        datePublished = datePublishedTag.get("content")
+        return datePublished
+
+    def getArticleDateModified(self):
+        dateModifiedTag = self._soup.find("meta", attrs={"itemprop":"dateModified"})
+        dateModified = dateModifiedTag.get("content")
+        return dateModified
+
+    def getArticleTitle(self):
+        articleTitleTag = self._soup.find("h1", attrs={"itemprop":"headline"})
+        articleTitle = articleTitleTag.text.strip()
+        return articleTitle
+
+    def getArticleCategory(self):
+        categoryTags = self._soup.findAll("li", attrs={"itemprop":"itemListElement"})
+        categoryName = ""
+        for categoryTag in categoryTags:
+            categoryNameTag = categoryTag.find("span", attrs={"itemprop":"name"})
+
+            if len(categoryName) != 0:
+                categoryName += " > "
+            categoryName += categoryTag.text.strip()
+
+        return categoryName
+
+    def getArticleAuthor(self): #TODO: optimize - only perform find of authorTag once per url, reuse authorTag in getArticleAuthorPosition etc.
+        authorTag = self._soup.find("div", attrs={"class":"author-name-block"}) #this tag represents author block if it's 15min employee and the source is 15min
+        if authorTag is None:
+            authorTag = self._soup.find("div", attrs={"class":"author-info author-text"}) #this tag represents author from another source
+
+        if authorTag is not None:
+            authorName = authorTag.find("span", attrs={"itemprop":"name"}).text.strip()
+        else:
+            authorName = self.getNotFoundValue()
+
+        return authorName
+
+    def getArticleAuthorPosition(self):
+        authorTag = self._soup.find("div", attrs={"class":"author-name-block"})
+        if authorTag is not None:
+            authorPosition = authorTag.find("div", attrs={"class":"author-position"}).text.strip()
+        else:
+            authorPosition = self.getNotFoundValue()
+
+        return authorPosition
+
+    def getArticleScope(self):
+        """Required Method"""
+
+    def getNotFoundValue(self):
+        return "n/a"
+
+class SimpleContentScraper:
+    def __init__(self, inputFilePath, cpuCount):
+        self._inputFilePath = inputFilePath
+        self._cpuCount = cpuCount
+
+    def scrape(self):
+        fileContent = self.getContentFromInputFile()
+        workUrls = tqdm(fileContent)
+
+        results = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in workUrls)
+        return results
+
+    def processUrl(self, url):
+        pageContent = httpget(self.cleanurl(url))
+
+        result = []
+        if pageContent is not None:
+            contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
+            result.append(contentScraperStrategy.getArticleTitle())
+            result.append(contentScraperStrategy.getArticleDatePublished())
+            result.append(contentScraperStrategy.getArticleDateModified())
+            result.append(contentScraperStrategy.getArticleCategory())
+            result.append(contentScraperStrategy.getArticleAuthor())
+            result.append(contentScraperStrategy.getArticleAuthorPosition())
+
+        return result
+
+    def getContentScraperStrategy(self, url, pageContent):
+        parsedUrl = urlparse(url)
+        contentScraperStrategy = ContentScraperAbstract()
+
+        if parsedUrl.hostname == "www.15min.lt":
+            contentScraperStrategy = FifteenContentScraper(url, pageContent)
+        elif parsedUrl.hostname == "www.delfi.lt":
+            raise Exception("Could not pick Delfi content scraper strategy for " + url)
+        elif parsedUrl.hostname == "www.lrytas.lt":
+            raise Exception("Could not pick LRytas content scraper strategy for " + url)
+        else:
+            raise Exception("Could not pick content scraper strategy for " + url)
+
+        return contentScraperStrategy
+
+    def getContentFromInputFile(self):
+        inputFile = open(self._inputFilePath, "r")
+        fileContent = inputFile.readlines()
+        inputFile.close()
+        return fileContent
+
+    def cleanurl(self, url):
+        return str(url).strip()
+
 def main():
     linksFile = "C:\\Data\\AnalyzeLinks\\links.csv"
 
@@ -121,11 +268,18 @@ def main():
 
     cpuCount = multiprocessing.cpu_count()
 
-    inputFile = open(linksFile, "r")
-    urls = inputFile.readlines()
-    inputFile.close()
+    simpleContentScraper = SimpleContentScraper(linksFile, cpuCount)
+    scrapeResult = simpleContentScraper.scrape()
 
-    processedList = Parallel(n_jobs=cpuCount)(delayed(processUrl)(url, workSessionFolder) for url in urls)
+    with open(resultFile, "w+", encoding="utf-8", newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(scrapeResult)
+
+    #inputFile = open(linksFile, "r")
+    #urls = inputFile.readlines()
+    #inputFile.close()
+
+    #processedList = Parallel(n_jobs=cpuCount)(delayed(processUrl)(url, workSessionFolder) for url in urls)
 
     # file = open(linksFile, "r")
     # resultFile = open(resultFile, "w+", encoding="utf-8")
