@@ -101,7 +101,7 @@ def processUrl(url, outputFolder):
         print("{0}: error processing resource {1}".format(os.getpid(), url))
         return
 
-    #allCases = re.findall(r'(skandal.*?\b)', pageText, flags=re.IGNORECASE)
+    allCases = re.findall(r'(skandal.*?\b)', pageText, flags=re.IGNORECASE)
 
     translation_table = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
     strippedUrl = cleanedUrl.translate(translation_table)[:40]
@@ -146,6 +146,10 @@ class ContentScraperAbstract(object):
 
     @abc.abstractmethod
     def getArticleScope(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getNotFoundValue(self):
         """Required Method"""
 
 class FifteenContentScraper(ContentScraperAbstract):
@@ -203,22 +207,40 @@ class FifteenContentScraper(ContentScraperAbstract):
         return authorPosition
 
     def getArticleScope(self):
-        """Required Method"""
+        articleTitleTag = self._soup.find("h1", attrs={"itemprop":"headline"})
+        articleIntroTag = self._soup.find("h4", attrs={"class":"intro"})
+        articleContentTag = self._soup.find("div", attrs={"class": "article-content"})
+
+        scopes = [articleTitleTag, articleIntroTag, articleContentTag]
+        return scopes
 
     def getNotFoundValue(self):
         return "n/a"
 
 class SimpleContentScraper:
-    def __init__(self, inputFilePath, cpuCount):
+    def __init__(self, inputFilePath, cpuCount, regexCompliancePatterns):
         self._inputFilePath = inputFilePath
         self._cpuCount = cpuCount
+        self._regexCompliancePatterns = regexCompliancePatterns
 
     def scrape(self):
         fileContent = self.getContentFromInputFile()
         workUrls = tqdm(fileContent)
 
         results = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in workUrls)
-        return results
+        results.insert(0, self.getDataSetHeader())
+        return self.removeEmptyEntries(results)
+
+    def removeEmptyEntries(self, entries):
+        cleanedEntries = [x for x in entries if x != []]
+        return cleanedEntries
+
+    def getDataSetHeader(self):
+        dataSetHeader = ["Title", "Category", "Date published", "Date modified", "Author", "Author position"]
+        for pattern in self._regexCompliancePatterns:
+            dataSetHeader.append("Count of {0}".format(pattern))
+        dataSetHeader.append("Url")
+        return dataSetHeader
 
     def processUrl(self, url):
         pageContent = httpget(self.cleanurl(url))
@@ -226,14 +248,27 @@ class SimpleContentScraper:
         result = []
         if pageContent is not None:
             contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
-            result.append(contentScraperStrategy.getArticleTitle())
-            result.append(contentScraperStrategy.getArticleDatePublished())
-            result.append(contentScraperStrategy.getArticleDateModified())
-            result.append(contentScraperStrategy.getArticleCategory())
-            result.append(contentScraperStrategy.getArticleAuthor())
-            result.append(contentScraperStrategy.getArticleAuthorPosition())
+            allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
+
+            if self.isArticleCompliant(allMatches):
+                result.append(contentScraperStrategy.getArticleTitle())
+                result.append(contentScraperStrategy.getArticleCategory())
+                result.append(contentScraperStrategy.getArticleDatePublished())
+                result.append(contentScraperStrategy.getArticleDateModified())
+                result.append(contentScraperStrategy.getArticleAuthor())
+                result.append(contentScraperStrategy.getArticleAuthorPosition())
+                result = self.getPatternMatchesColumns(result, allMatches)
+                result.append(self.cleanurl(url))
 
         return result
+
+    def getPatternMatchesColumns(self, currentResult, allPatternMatches):
+        for i in range(0, len(self._regexCompliancePatterns)):
+            count = 0
+            for matches in allPatternMatches[i]:
+                count += len(matches)
+            currentResult.append(count)
+        return currentResult
 
     def getContentScraperStrategy(self, url, pageContent):
         parsedUrl = urlparse(url)
@@ -259,6 +294,28 @@ class SimpleContentScraper:
     def cleanurl(self, url):
         return str(url).strip()
 
+    def getPatternMatches(self, articleScopes):
+        allMatches = []
+        for pattern in self._regexCompliancePatterns:
+            matches = []
+            for scope in articleScopes:
+                scopeText = scope.text
+                matches.append(re.findall(pattern, scopeText, flags=re.IGNORECASE))
+
+            allMatches.append(matches)
+
+        return allMatches
+
+    def isArticleCompliant(self, allMatches):
+        isCompliant = False
+
+        for matches in allMatches:
+            if len(matches) > 0:
+                isCompliant = True
+                break
+
+        return isCompliant
+
 def main():
     linksFile = "C:\\Data\\AnalyzeLinks\\links.csv"
 
@@ -267,47 +324,14 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
+    regexCompliancePatterns = [r"(skandal.*?\b)", r"(nuog.*?\b)"]
 
-    simpleContentScraper = SimpleContentScraper(linksFile, cpuCount)
+    simpleContentScraper = SimpleContentScraper(linksFile, cpuCount, regexCompliancePatterns)
     scrapeResult = simpleContentScraper.scrape()
 
-    with open(resultFile, "w+", encoding="utf-8", newline='') as f:
-        writer = csv.writer(f)
+    with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
+        writer = csv.writer(resultFile)
         writer.writerows(scrapeResult)
-
-    #inputFile = open(linksFile, "r")
-    #urls = inputFile.readlines()
-    #inputFile.close()
-
-    #processedList = Parallel(n_jobs=cpuCount)(delayed(processUrl)(url, workSessionFolder) for url in urls)
-
-    # file = open(linksFile, "r")
-    # resultFile = open(resultFile, "w+", encoding="utf-8")
-    # for line in file.readlines():
-    #     url = line
-    #     pageSource = ""
-    #     try:
-    #         pageSource = httpget(url)
-    #     except:
-    #         print("Could not get from " + url)
-    #
-    #     workFileName = "page_" + getCurrentDateTime() + ".htm"
-    #     if pageSource is not None:
-    #         workFile = open(workSessionFolder + "\\" + workFileName, "w+", encoding="utf-8")
-    #         workFile.writelines(pageSource)
-    #         workFile.close()
-    #
-    #     parsedUrl = urlparse(url)
-    #
-    #     nextSlashPosition = parsedUrl.path.find("/", 1)
-    #     category = parsedUrl.path[1:nextSlashPosition]
-    #     fullLink = line
-    #     wordPosition = parsedUrl.path.find("skandal")
-    #
-    #     resultFile.write("{0},{1},{2},{3},{4}".format(parsedUrl.netloc, category, wordPosition, fullLink, workFileName))
-    #
-    # resultFile.close()
-    # file.close()
 
 
 if __name__ == '__main__':
