@@ -270,7 +270,7 @@ def main(args):
     cpuCount = multiprocessing.cpu_count()
 
     fifteenLinkScraper = SimpleLinkScraper(cpuCount, FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
-    fifteenLinks = fifteenLinkScraper.getLinks() #TODO: move cpu_count() to constructor __init__
+    fifteenLinks = fifteenLinkScraper.getLinks()
     saveToFile(workSessionFolder, fifteenLinks)
 
     #delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
