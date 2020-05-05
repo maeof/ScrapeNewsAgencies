@@ -140,14 +140,6 @@ class LinkScraperAbstract(object):
         """Required Method"""
 
     @abc.abstractmethod
-    def formatDate(self, date):
-        """Required Method"""
-
-    @abc.abstractmethod
-    def getIterationsCount(self):
-        """Required Method"""
-
-    @abc.abstractmethod
     def getLinksFromPage(self, pageContent):
         """Required Method"""
 
@@ -232,7 +224,8 @@ class DelfiLinkScraper(LinkScraperAbstract):
 #class LrytasLinkScraper(LinkScraperAbstract): TODO: implement for LRytas
 
 class SimpleLinkScraper:
-    def __init__(self, linkScraperStrategy):
+    def __init__(self, cpuCount, linkScraperStrategy):
+        self._cpuCount = cpuCount
         self._linkScraperStrategy = linkScraperStrategy
 
     def processUrl(self, url):
@@ -240,11 +233,11 @@ class SimpleLinkScraper:
         linksFromPage = self.getLinksFromPage(pageContent)
         return linksFromPage
 
-    def getLinks(self, cpuCount):
+    def getLinks(self):
         workUrls = self.getWorkUrls()
         inputs = tqdm(workUrls)
 
-        links = Parallel(n_jobs=cpuCount)(delayed(self.processUrl)(url) for url in inputs)
+        links = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in inputs)
 
         return self.mergeResults(links)
 
@@ -274,12 +267,14 @@ def main(args):
     delfiParams = "?fromd={0}&tod={1}&channel=1&category=0&query=&page={2}" #delfi date in format: day.month.year
     delfiIterationsCount = 866
 
-    fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
-    fifteenLinks = fifteenLinkScraper.getLinks(multiprocessing.cpu_count()) #TODO: move cpu_count() to constructor __init__
+    cpuCount = multiprocessing.cpu_count()
+
+    fifteenLinkScraper = SimpleLinkScraper(cpuCount, FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
+    fifteenLinks = fifteenLinkScraper.getLinks() #TODO: move cpu_count() to constructor __init__
     saveToFile(workSessionFolder, fifteenLinks)
 
-    #delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
-    #delfiLinks = delfiLinkScraper.getLinks(multiprocessing.cpu_count())
+    #delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    #delfiLinks = delfiLinkScraper.getLinks()
     #saveToFile(workSessionFolder, delfiLinks)
 
     #print(b.instanceMethod())
