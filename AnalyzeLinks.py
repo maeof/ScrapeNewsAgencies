@@ -225,17 +225,55 @@ class DelfiContentScraper(ContentScraperAbstract):
 
     def getArticleDatePublished(self):
         datePublishedTag = self._soup.find("div", attrs={"class":"source-date"})
-        datePublished = datePublishedTag.text.strip()
+        if (datePublishedTag is None):
+            datePublishedTag = self._soup.find("div", attrs={"class":"delfi-source-date"})
+
+        datePublished = ""
+        if datePublishedTag is not None:
+            datePublished = datePublishedTag.text.strip()
+        else:
+            datePublished = self.getNotFoundValue()
+
         return datePublished
 
     def getArticleDateModified(self):
         dateModifiedTag = self._soup.find("sup", attrs={"class":"rsh"})
-        dateModified = dateModifiedTag.text.strip()
+
+        dateModified = ""
+        if dateModifiedTag is not None:
+            dateModified = dateModifiedTag.text.strip()
+        else:
+            dateModified = self.getNotFoundValue()
+
         return dateModified
 
     def getArticleTitle(self):
-        articleTitleTag = self._soup.find("div", attrs={"class":"article-title"})
-        articleTitle = articleTitleTag.find("h1").text.strip()
+        articleTitle = self._getRegularArticleTitle()
+
+        if len(articleTitle) == 0:
+            articleTitle = self._getMultimediaArticleTitle()
+
+        if len(articleTitle) == 0:
+            articleTitle = self.getNotFoundValue()
+
+        return articleTitle
+
+    def _getRegularArticleTitle(self):
+        articleTitleTag = self._soup.find("div", attrs={"class": "article-title"})
+
+        articleTitle = ""
+        if articleTitleTag is not None:
+            articleTitle = articleTitleTag.find("h1").text.strip()
+
+        return articleTitle
+
+    def _getMultimediaArticleTitle(self):
+        articleTitleTag = self._soup.find("h1", attrs={"itemprop": "headline"})
+
+        articleTitle = ""
+        if articleTitleTag is not None:
+            articleTitle = articleTitleTag.text.strip()
+
         return articleTitle
 
     def getArticleCategory(self):
@@ -303,18 +341,31 @@ class DelfiContentScraper(ContentScraperAbstract):
         return "n/a"
 
 class SimpleContentScraper:
-    def __init__(self, inputFilePath, cpuCount, regexCompliancePatterns):
+    def __init__(self, inputFilePath, workSessionFolder, cpuCount, regexCompliancePatterns):
         self._inputFilePath = inputFilePath
+        self._workSessionFolder = workSessionFolder
         self._cpuCount = cpuCount
         self._regexCompliancePatterns = regexCompliancePatterns
 
     def scrape(self):
         fileContent = self.getContentFromInputFile()
+        fileContent = self.filterFile(fileContent)
         workUrls = tqdm(fileContent)
 
         results = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in workUrls)
         results.insert(0, self.getDataSetHeader())
         return self.removeEmptyEntries(results)
+
+    def filterFile(self, fileContent):
+        doNotIncludeTheseLinksPlease = ["video", "multimedija"]
+        filteredFileContent = []
+        for url in fileContent:
+            parsedUrl = urlparse(url)
+            firstPathInUrl = parsedUrl.path[1:parsedUrl.path.find("/", 1)]
+            if firstPathInUrl in doNotIncludeTheseLinksPlease:
+                continue
+            filteredFileContent.append(url)
+        return filteredFileContent
 
     def removeEmptyEntries(self, entries):
         cleanedEntries = [x for x in entries if x != []]
@@ -332,22 +383,38 @@ class SimpleContentScraper:
         pageContent = httpget(cleanUrl)
 
         result = []
-        if pageContent is not None:
-            contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
-            allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
 
-            if self.isArticleCompliant(allMatches):
-                result.append(self.getSourceHostname(cleanUrl))
-                result.append(contentScraperStrategy.getArticleTitle())
-                result.append(contentScraperStrategy.getArticleCategory())
-                result.append(contentScraperStrategy.getArticleDatePublished())
-                result.append(contentScraperStrategy.getArticleDateModified())
-                result.append(contentScraperStrategy.getArticleAuthor())
-                result.append(contentScraperStrategy.getArticleAuthorPosition())
-                result = self.getPatternMatchesColumns(result, allMatches)
-                result.append(cleanUrl)
+        try:
+            if pageContent is not None:
+                contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
+                allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
+
+                if self.isArticleCompliant(allMatches):
+                    result.append(self.getSourceHostname(cleanUrl))
+                    result.append(contentScraperStrategy.getArticleTitle())
+                    result.append(contentScraperStrategy.getArticleCategory())
+                    result.append(contentScraperStrategy.getArticleDatePublished())
+                    result.append(contentScraperStrategy.getArticleDateModified())
+                    result.append(contentScraperStrategy.getArticleAuthor())
+                    result.append(contentScraperStrategy.getArticleAuthorPosition())
+                    result = self.getPatternMatchesColumns(result, allMatches)
+                    result.append(cleanUrl)
+        except Exception as ex:
+            self._log(ex, cleanUrl)
 
         return result
+
+    def _log(self, exception, url):
+        logFile = open(self._workSessionFolder + "\\" + "log.txt", "a+")
+        logFile.write("Exception has occured: " + url + "\n")
+        logFile.write(type(exception))
+        logfile.write("\n")
+        logFile.write(exception)
+        logfile.write("\n")
+        logFile.write(exception.args)
+        logfile.write("\n")
+        logfile.write("\n")
+        logFile.close()
 
     def getSourceHostname(self, url):
         return urlparse(url).hostname
@@ -417,7 +484,7 @@ def main():
     cpuCount = multiprocessing.cpu_count()
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
-    simpleContentScraper = SimpleContentScraper(linksFile, cpuCount, regexCompliancePatterns)
+    simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
     scrapeResult = simpleContentScraper.scrape()
 
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:

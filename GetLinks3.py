@@ -273,9 +273,9 @@ def main(args):
     fifteenLinks = fifteenLinkScraper.getLinks()
     saveToFile(workSessionFolder, fifteenLinks)
 
-    #delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
-    #delfiLinks = delfiLinkScraper.getLinks()
-    #saveToFile(workSessionFolder, delfiLinks)
+    delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    delfiLinks = delfiLinkScraper.getLinks()
+    saveToFile(workSessionFolder, delfiLinks)
 
     #print(b.instanceMethod())
 
