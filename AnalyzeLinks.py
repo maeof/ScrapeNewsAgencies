@@ -409,10 +409,16 @@ class LrytasContentScraper(ContentScraperAbstract):
         if aboutBlockJson:
             jsonText = aboutBlockJson[0]
             jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            jsonText = self._cleanHtml(jsonText)
             about = json.loads(jsonText)
             articleTitle = about["headline"].strip()
 
         return articleTitle
+
+    def _cleanHtml(self, raw_html):
+        cleanr = re.compile('<.*?>')
+        cleantext = re.sub(cleanr, '', raw_html)
+        return cleantext
 
     def getArticleCategory(self):
         categoryName = ""
@@ -421,6 +427,7 @@ class LrytasContentScraper(ContentScraperAbstract):
         if aboutBlockJson:
             jsonText = aboutBlockJson[0]
             jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            jsonText = self._cleanHtml(jsonText)
             about = json.loads(jsonText)
             for itemListElement in about["itemListElement"]:
                 if len(categoryName) != 0:
@@ -439,6 +446,7 @@ class LrytasContentScraper(ContentScraperAbstract):
         if aboutBlockJson:
             jsonText = aboutBlockJson[0]
             jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            jsonText = self._cleanHtml(jsonText)
             about = json.loads(jsonText)
             authorName = about["publisher"]["name"]
 
@@ -450,11 +458,13 @@ class LrytasContentScraper(ContentScraperAbstract):
     def getArticleScope(self):
         script = self._soup.find("body").find("script").contents[0]
         script = script.strip().replace("\t", "").replace("\n", "")
+        script = self._cleanHtml(script)
 
         pos = script.find("{")
         pos2 = script.find("\r")
 
         jsonbby = script[pos:pos2 - 1]
+
         articleJsonObj = json.loads(jsonbby)
 
         scopes = [articleJsonObj["clearContent"], articleJsonObj["title"]]
@@ -685,7 +695,7 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
-    cpuCount = 1
+    #cpuCount = 1
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
