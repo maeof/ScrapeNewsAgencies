@@ -152,6 +152,10 @@ class ContentScraperAbstract(object):
     def getNotFoundValue(self):
         """Required Method"""
 
+    @abc.abstractmethod
+    def isArticleCompliant(self):
+        """Required Method"""
+
 class FifteenContentScraper(ContentScraperAbstract):
     def __init__(self, url, pageContent):
         self._url = url
@@ -217,7 +221,133 @@ class FifteenContentScraper(ContentScraperAbstract):
     def getNotFoundValue(self):
         return "n/a"
 
+    def isArticleCompliant(self):
+        return True
+
 class DelfiContentScraper(ContentScraperAbstract):
+    def __init__(self, url, pageContent):
+        self._url = url
+        self._pageContent = pageContent
+        self._soup = BeautifulSoup(pageContent, "html.parser")
+
+    def getArticleDatePublished(self):
+        datePublishedTag = self._soup.find("div", attrs={"class":"source-date"})
+        if (datePublishedTag is None):
+            datePublishedTag = self._soup.find("div", attrs={"class":"delfi-source-date"})
+
+        datePublished = ""
+        if datePublishedTag is not None:
+            datePublished = datePublishedTag.text.strip()
+        else:
+            datePublished = None
+
+        return datePublished
+
+    def getArticleDateModified(self):
+        dateModified = None
+        return dateModified
+
+    def getArticleTitle(self):
+        articleTitle = self._getRegularArticleTitle()
+
+        if len(articleTitle) == 0:
+            articleTitle = self._getMultimediaArticleTitle()
+
+        if len(articleTitle) == 0:
+            articleTitle = self.getNotFoundValue()
+
+        return articleTitle
+
+    def _getRegularArticleTitle(self):
+        articleTitleTag = self._soup.find("div", attrs={"class": "article-title"})
+
+        articleTitle = ""
+        if articleTitleTag is not None:
+            articleTitle = articleTitleTag.find("h1").text.strip()
+            articleTitle = articleTitle.replace("\n", " ")
+            articleTitle = articleTitle.replace("\t", "")
+
+        return articleTitle
+
+    def _getMultimediaArticleTitle(self):
+        articleTitleTag = self._soup.find("h1", attrs={"itemprop": "headline"})
+
+        articleTitle = ""
+        if articleTitleTag is not None:
+            articleTitle = articleTitleTag.text.strip()
+            articleTitle = articleTitle.replace("\n", " ")
+            articleTitle = articleTitle.replace("\t", "")
+
+        return articleTitle
+
+    def getArticleCategory(self):
+        categoryName = ""
+
+        categoryFatherTag = self._soup.find("div", attrs={"class":"delfi-breadcrumbs delfi-category-location"})
+        if categoryFatherTag is not None:
+            categoryTags = categoryFatherTag.findAll("span", attrs={"itemprop":"itemListElement"})
+
+        if categoryTags is not None:
+            for categoryTag in categoryTags:
+                if len(categoryName) != 0:
+                    categoryName += " > "
+                categoryName += categoryTag.text.strip()
+
+        if len(categoryName) == 0:
+            categoryName = self.getNotFoundValue()
+
+        return categoryName
+
+    def getArticleAuthor(self):
+        authorTag = self._soup.find("div", attrs={"class":"delfi-author-name"})
+        if authorTag is None:
+            authorTag = self._soup.find("div", attrs={"class":"delfi-source-name"})
+
+        if authorTag is not None:
+            authorName = authorTag.text.strip()
+        else:
+            authorName = self.getNotFoundValue()
+
+        return authorName
+
+    def getArticleAuthorPosition(self):
+        authorTag = self._soup.find("div", attrs={"class":"delfi-author-name"})
+
+        authorPosition = ""
+        if authorTag is not None:
+            authorBioLinkTag = authorTag.find("a")
+            if authorBioLinkTag is not None:
+                authorBioLink = authorBioLinkTag.get("href")
+                bioPageContent = httpget(authorBioLink)
+
+                if bioPageContent is not None:
+                    babySoup = BeautifulSoup(bioPageContent, "html.parser")
+                    authorPosition = babySoup.find("div", attrs={"class":"title"}).text.strip()
+
+                    if len(authorPosition) == 0:
+                        authorPosition = self.getNotFoundValue()
+        else:
+            authorPosition = self.getNotFoundValue()
+
+        return authorPosition
+
+    def getArticleScope(self):
+        articleTitleTag = self._soup.find("div", attrs={"class":"article-title"})
+        articleIntroTag = self._soup.find("div", attrs={"class":"delfi-article-lead"})
+
+        bigColumnTag = self._soup.find("div", attrs={"class": "col-xs-8"})
+        articleContentTag = bigColumnTag.find("div") #or bigColumnTag.div (finds the first <div> in bigColumnTag because delfi
+
+        scopes = [articleTitleTag, articleIntroTag, articleContentTag]
+        return scopes
+
+    def getNotFoundValue(self):
+        return "n/a"
+
+    def isArticleCompliant(self):
+        return True
+
+class LrytasContentScraper(ContentScraperAbstract):
     def __init__(self, url, pageContent):
         self._url = url
         self._pageContent = pageContent
@@ -337,6 +467,9 @@ class DelfiContentScraper(ContentScraperAbstract):
     def getNotFoundValue(self):
         return "n/a"
 
+    def isArticleCompliant(self):
+        return True
+
 class SimpleContentScraper:
     def __init__(self, inputFilePath, workSessionFolder, cpuCount, regexCompliancePatterns):
         self._inputFilePath = inputFilePath
@@ -387,7 +520,7 @@ class SimpleContentScraper:
                 contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
                 allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
 
-                if self.isArticleCompliant(allMatches):
+                if self.isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
                     result.append(self.getSourceHostname(cleanUrl))
                     result.append(contentScraperStrategy.getArticleTitle())
                     result.append(contentScraperStrategy.getArticleCategory())
@@ -459,7 +592,7 @@ class SimpleContentScraper:
         elif parsedUrl.hostname == "www.delfi.lt":
             contentScraperStrategy = DelfiContentScraper(url, pageContent)
         elif parsedUrl.hostname == "www.lrytas.lt":
-            raise Exception("Could not pick LRytas content scraper strategy for " + url)
+            contentScraperStrategy = LrytasContentScraper(url, pageContent)
         else:
             raise Exception("Could not pick content scraper strategy for " + url)
 
