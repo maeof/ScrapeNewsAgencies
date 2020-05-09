@@ -387,9 +387,9 @@ def main(args):
     delfiParams = "?fromd={0}&tod={1}&channel=1&category=0&query=&page={2}" #delfi date in format: day.month.year
     delfiIterationsCount = 866
 
-    # Iterations justification: each click on "Daugiau" loads 24 unique articles. We assume that after 1000 iterations we'll reach
-    # articles whose date of publication is in the range of fromDate and toDate. It is like so because there is no trivial way to access
-    # the archive in lrytas.lt portal.
+    # Iterations justification: each click on "Daugiau" loads 24 unique articles. We load articles forever and at each 25th
+    # load we check the last article's date from it's url - if it's still newer than fromDate - we continue the articles loading.
+    # This strategy was set up to work like so because there is no trivial way to access the archive in lrytas.lt portal.
     lrytasSeedUrl = "https://www.lrytas.lt/lietuvosdiena/aktualijos/"
     lrytasWebDriverPath = "c:\\data\\chromedriver\\chromedriver.exe"
 
