@@ -144,8 +144,13 @@ class LinkScraperAbstract(object):
     def getPageContent(self, resourceLink):
         """Required Method"""
 
+    @abc.abstractmethod
+    def getCpuCount(self):
+        """Required Method"""
+
 class FifteenLinkScraper(LinkScraperAbstract):
-    def __init__(self, fromDate, toDate, seedUrl, params):
+    def __init__(self, cpuCount, fromDate, toDate, seedUrl, params):
+        self._cpuCount = cpuCount
         self._fromDate = fromDate
         self._toDate = toDate
         self._seedUrl = seedUrl
@@ -186,8 +191,12 @@ class FifteenLinkScraper(LinkScraperAbstract):
     def getPageContent(self, resourceLink):
         return httpget(resourceLink)
 
+    def getCpuCount(self):
+        return self._cpuCount
+
 class DelfiLinkScraper(LinkScraperAbstract):
-    def __init__(self, fromDate, toDate, seedUrl, params, iterationsCount = 0):
+    def __init__(self, cpuCount, fromDate, toDate, seedUrl, params, iterationsCount = 0):
+        self._cpuCount = cpuCount
         self._fromDate = fromDate
         self._toDate = toDate
         self._seedUrl = seedUrl
@@ -228,12 +237,14 @@ class DelfiLinkScraper(LinkScraperAbstract):
     def getPageContent(self, resourceLink):
         return httpget(resourceLink)
 
+    def getCpuCount(self):
+        return self._cpuCount
+
 class LrytasLinkScraper(LinkScraperAbstract):
-    def __init__(self, fromDate, toDate, seedUrl, iterationsCount, webDriverPath):
+    def __init__(self, fromDate, toDate, seedUrl, webDriverPath):
         self._fromDate = fromDate
         self._toDate = toDate
         self._seedUrl = seedUrl
-        self._iterationsCount = iterationsCount
         self._webDriverPath = webDriverPath
 
     def getWorkUrls(self):
@@ -250,10 +261,10 @@ class LrytasLinkScraper(LinkScraperAbstract):
 
         for article in soup.findAll("article", attrs={"class":"post"}):
             articleLinkTag = article.find("a")
-            if articleLinkTag is not None:
-                articleLink = articleLinkTag.get('href')
+            if articleLinkTag:
+                articleLink = articleLinkTag.get("href")
                 if self._isLinkValid(articleLink):
-                    links.add(articleLinkTag.get('href'))
+                    links.add(articleLink)
 
         return links
 
@@ -317,19 +328,24 @@ class LrytasLinkScraper(LinkScraperAbstract):
         if lastArticleDate and lastArticleDate < self._fromDate:
             continueLoading = False
 
+        if lastArticleDate:
+            print("Currently on date: " + str(lastArticleDate))
+
         return continueLoading
 
     def _isLinkValid(self, link):
         isValid = True
 
-        if len(link) == 0:
+        if len(link) == 0 or link is None:
             isValid = False
 
         return isValid
 
+    def getCpuCount(self):
+        return 1
+
 class SimpleLinkScraper:
-    def __init__(self, cpuCount, linkScraperStrategy):
-        self._cpuCount = cpuCount
+    def __init__(self, linkScraperStrategy):
         self._linkScraperStrategy = linkScraperStrategy
 
     def processUrl(self, url):
@@ -341,7 +357,7 @@ class SimpleLinkScraper:
         workUrls = self._linkScraperStrategy.getWorkUrls()
         inputs = tqdm(workUrls)
 
-        links = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in inputs)
+        links = Parallel(n_jobs=self._linkScraperStrategy.getCpuCount())(delayed(self.processUrl)(url) for url in inputs)
 
         return self.mergeResults(links)
 
@@ -369,21 +385,19 @@ def main(args):
     # articles whose date of publication is in the range of fromDate and toDate. It is like so because there is no trivial way to access
     # the archive in lrytas.lt portal.
     lrytasSeedUrl = "https://www.lrytas.lt/lietuvosdiena/aktualijos/"
-    lrytasIterationsCount = 1000
-    lrytasCpuCount = 1
     lrytasWebDriverPath = "c:\\data\\chromedriver\\chromedriver.exe"
 
     cpuCount = multiprocessing.cpu_count()
 
-    #fifteenLinkScraper = SimpleLinkScraper(cpuCount, FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
+    #fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(cpuCount, fromDate, toDate, fifteenSeedUrl, fifteenParams))
     #fifteenLinks = fifteenLinkScraper.getLinks()
     #saveToFile(workSessionFolder, fifteenLinks)
 
-    #delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    #delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(cpuCount, fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
     #delfiLinks = delfiLinkScraper.getLinks()
     #saveToFile(workSessionFolder, delfiLinks)
 
-    lrytasLinkScraper = SimpleLinkScraper(lrytasCpuCount, LrytasLinkScraper(fromDate, toDate, lrytasSeedUrl, lrytasIterationsCount, lrytasWebDriverPath))
+    lrytasLinkScraper = SimpleLinkScraper(LrytasLinkScraper(fromDate, toDate, lrytasSeedUrl, lrytasWebDriverPath))
     lrytasLinks = lrytasLinkScraper.getLinks()
     saveToFile(workSessionFolder, lrytasLinks)
 
