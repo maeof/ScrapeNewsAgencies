@@ -108,14 +108,14 @@ def processUrl(url, outputFolder):
 
     outputFileName = outputFolder + "\\" + str(os.getpid()) + "_" + strippedUrl
 
-    #resultFile = open(outputFileName + ".txt", "w+", encoding="utf-8")
-    #resultFile.write(("{0}: {1}".format(len(allCases), allCases)))
-    #resultFile.close()
-
     if pageContent is not None:
         pageContentFile = open(outputFileName + ".htm", "w+", encoding="utf-8")
         pageContentFile.writelines(pageContent)
         pageContentFile.close()
+
+    #resultFile = open(outputFileName + ".txt", "w+", encoding="utf-8")
+    #resultFile.write(("{0}: {1}".format(len(allCases), allCases)))
+    #resultFile.close()
 
 class ContentScraperAbstract(object):
     __metaclass__ = abc.ABCMeta
@@ -257,6 +257,8 @@ class DelfiContentScraper(ContentScraperAbstract):
         articleTitle = ""
         if articleTitleTag is not None:
             articleTitle = articleTitleTag.find("h1").text.strip()
+            articleTitle = articleTitle.replace("\n", " ")
+            articleTitle = articleTitle.replace("\t", "")
 
         return articleTitle
 
@@ -266,6 +268,8 @@ class DelfiContentScraper(ContentScraperAbstract):
         articleTitle = ""
         if articleTitleTag is not None:
             articleTitle = articleTitleTag.text.strip()
+            articleTitle = articleTitle.replace("\n", " ")
+            articleTitle = articleTitle.replace("\t", "")
 
         return articleTitle
 
@@ -325,7 +329,7 @@ class DelfiContentScraper(ContentScraperAbstract):
         articleIntroTag = self._soup.find("div", attrs={"class":"delfi-article-lead"})
 
         bigColumnTag = self._soup.find("div", attrs={"class": "col-xs-8"})
-        articleContentTag = bigColumnTag.find("div") #or bigColumnTag.div
+        articleContentTag = bigColumnTag.find("div") #or bigColumnTag.div (finds the first <div> in bigColumnTag because delfi
 
         scopes = [articleTitleTag, articleIntroTag, articleContentTag]
         return scopes
@@ -369,6 +373,7 @@ class SimpleContentScraper:
         for pattern in self._regexCompliancePatterns:
             dataSetHeader.append("Count of {0}".format(pattern))
         dataSetHeader.append("Url")
+        dataSetHeader.append("Path to local source")
         return dataSetHeader
 
     def processUrl(self, url):
@@ -392,26 +397,48 @@ class SimpleContentScraper:
                     result.append(contentScraperStrategy.getArticleAuthorPosition())
                     result = self.getPatternMatchesColumns(result, allMatches)
                     result.append(cleanUrl)
+
+                    savedContentFileName = self._savePageContentToFile(cleanUrl, pageContent)
+                    result.append(savedContentFileName)
         except Exception as ex:
             result.clear()
-            print("failed: " + url)
+            print(str(os.getpid()) + " failed to process: " + url)
+            self._log(ex, cleanUrl)
 
         return result
+
+    def _getCurrentDateTime(self):
+        now = datetime.now()
+        return now.strftime("%Y_%m_%d_%H_%M_%S")
+
+    def _savePageContentToFile(self, url, pageContent):
+        parsedUrl = urlparse(url)
+
+        translationTable = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
+        strippedPath = parsedUrl.path.translate(translationTable)[:40]
+
+        strippedHostname = parsedUrl.hostname.replace("w", "").replace(".", "")
+        safeUrl = strippedHostname + "_" + strippedPath
+
+        outputFileName = self._workSessionFolder + "\\" + str(os.getpid()) + "_" + self._getCurrentDateTime() + safeUrl + ".htm"
+
+        if pageContent is not None:
+            pageContentFile = open(outputFileName, "w+", encoding="utf-8")
+            pageContentFile.writelines(pageContent)
+            pageContentFile.close()
+
+        return outputFileName
 
     def _log(self, exception, url):
         try:
             logFile = open(self._workSessionFolder + "\\" + "log.txt", "a+")
             logFile.write("Exception has occured: " + str(url) + "\n")
-            logFile.write(str(type(exception)))
-            logfile.write("\n")
-            logFile.write(str(exception))
-            logfile.write("\n")
-            logFile.write(str(exception.args))
-            logfile.write("\n")
-            logfile.write("\n")
+            logFile.write(str(exception) + "\n")
+            logFile.write(str(exception.args) + "\n")
+            logFile.write(str(os.getpid()) + " tried to process it at " + str(self._getCurrentDateTime()) + " but failed." + "\n\n")
             logFile.close()
         except:
-            print("lol failed to write to the log file: " + url)
+            print("lol failed to write to the log file but please do continue: " + url)
 
     def getSourceHostname(self, url):
         return urlparse(url).hostname
@@ -478,8 +505,7 @@ def main():
     workSessionFolder = createWorkSessionFolder(workFolder)
     resultFile = workSessionFolder + "\\" + "result.csv"
 
-    #cpuCount = multiprocessing.cpu_count()
-    cpuCount = 1
+    cpuCount = multiprocessing.cpu_count()
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
