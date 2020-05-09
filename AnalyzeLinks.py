@@ -237,14 +237,7 @@ class DelfiContentScraper(ContentScraperAbstract):
         return datePublished
 
     def getArticleDateModified(self):
-        dateModifiedTag = self._soup.find("sup", attrs={"class":"rsh"})
-
-        dateModified = ""
-        if dateModifiedTag is not None:
-            dateModified = dateModifiedTag.text.strip()
-        else:
-            dateModified = self.getNotFoundValue()
-
+        dateModified = self.getNotFoundValue()
         return dateModified
 
     def getArticleTitle(self):
@@ -400,21 +393,25 @@ class SimpleContentScraper:
                     result = self.getPatternMatchesColumns(result, allMatches)
                     result.append(cleanUrl)
         except Exception as ex:
-            self._log(ex, cleanUrl)
+            result.clear()
+            print("failed: " + url)
 
         return result
 
     def _log(self, exception, url):
-        logFile = open(self._workSessionFolder + "\\" + "log.txt", "a+")
-        logFile.write("Exception has occured: " + url + "\n")
-        logFile.write(type(exception))
-        logfile.write("\n")
-        logFile.write(exception)
-        logfile.write("\n")
-        logFile.write(exception.args)
-        logfile.write("\n")
-        logfile.write("\n")
-        logFile.close()
+        try:
+            logFile = open(self._workSessionFolder + "\\" + "log.txt", "a+")
+            logFile.write("Exception has occured: " + str(url) + "\n")
+            logFile.write(str(type(exception)))
+            logfile.write("\n")
+            logFile.write(str(exception))
+            logfile.write("\n")
+            logFile.write(str(exception.args))
+            logfile.write("\n")
+            logfile.write("\n")
+            logFile.close()
+        except:
+            print("lol failed to write to the log file: " + url)
 
     def getSourceHostname(self, url):
         return urlparse(url).hostname
@@ -481,7 +478,8 @@ def main():
     workSessionFolder = createWorkSessionFolder(workFolder)
     resultFile = workSessionFolder + "\\" + "result.csv"
 
-    cpuCount = multiprocessing.cpu_count()
+    #cpuCount = multiprocessing.cpu_count()
+    cpuCount = 1
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
