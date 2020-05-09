@@ -181,12 +181,20 @@ class FifteenContentScraper(ContentScraperAbstract):
 
     def getArticleDatePublished(self):
         datePublishedTag = self._soup.find("meta", attrs={"itemprop":"datePublished"})
-        datePublished = datePublishedTag.get("content")
+
+        datePublished = None
+        if datePublishedTag:
+            datePublished = datePublishedTag.get("content")
+
         return datePublished
 
     def getArticleDateModified(self):
         dateModifiedTag = self._soup.find("meta", attrs={"itemprop":"dateModified"})
-        dateModified = dateModifiedTag.get("content")
+
+        dateModified = None
+        if dateModifiedTag:
+            dateModified = dateModifiedTag.get("content")
+
         return dateModified
 
     def getArticleTitle(self):
