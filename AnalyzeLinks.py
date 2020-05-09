@@ -16,6 +16,7 @@ from requests.exceptions import RequestException
 from contextlib import closing
 
 from bs4 import BeautifulSoup
+import json
 
 import os
 from datetime import datetime
@@ -381,15 +382,11 @@ class LrytasContentScraper(ContentScraperAbstract):
         self._webDriverPath = webDriverPath
 
     def getArticleDatePublished(self):
-        datePublishedTag = self._soup.find("h3", attrs={"class":"article__date"})
+        datePublishedTag = self._soup.find("meta", attrs={"itemprop":"datePublished"})
 
         datePublished = None
         if datePublishedTag:
-            datePublished = datePublishedTag.text.strip()
-            commaPosition = datePublished.find(",")
-
-            if commaPosition != 0:
-                datePublished = datePublished[0:commaPosition].strip()
+            datePublished = datePublishedTag.get("content")
 
         return datePublished
 
@@ -398,29 +395,29 @@ class LrytasContentScraper(ContentScraperAbstract):
         return dateModified
 
     def getArticleTitle(self):
-        articleTitleTag = self._soup.find("h1", attrs={"class": "article__title"})
+        articleTitle = self.getNotFoundValue()
 
-        if articleTitleTag:
-            articleTitle = articleTitleTag.text.strip()
-            articleTitle = articleTitle.replace("\n", " ")
-            articleTitle = articleTitle.replace("\t", "")
-        else:
-            articleTitle = self.getNotFoundValue()
+        aboutBlockJson = self._soup.find("script", type="application/ld+json").contents
+        if aboutBlockJson:
+            jsonText = aboutBlockJson[0]
+            jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            about = json.loads(jsonText)
+            articleTitle = about["headline"].strip()
 
         return articleTitle
 
     def getArticleCategory(self):
         categoryName = ""
+        aboutBlockJson = self._soup.findAll("script", attrs={"type": "application/ld+json"})[-1].contents
 
-        categoryFatherTag = self._soup.find("div", attrs={"class":"article__tags"})
-        if categoryFatherTag is not None:
-            categoryTags = categoryFatherTag.findAll("a")
-
-        if categoryTags:
-            for categoryTag in categoryTags:
+        if aboutBlockJson:
+            jsonText = aboutBlockJson[0]
+            jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            about = json.loads(jsonText)
+            for itemListElement in about["itemListElement"]:
                 if len(categoryName) != 0:
                     categoryName += " > "
-                categoryName += categoryTag.text.strip()
+                categoryName += itemListElement["item"]["name"]
 
         if len(categoryName) == 0:
             categoryName = self.getNotFoundValue()
@@ -428,12 +425,14 @@ class LrytasContentScraper(ContentScraperAbstract):
         return categoryName
 
     def getArticleAuthor(self):
-        authorTag = self._soup.find("a", attrs={"class":"article__authorName"})
+        authorName = self.getNotFoundValue()
 
-        if authorTag:
-            authorName = authorTag.text.strip()
-        else:
-            authorName = self.getNotFoundValue()
+        aboutBlockJson = self._soup.find("script", type="application/ld+json").contents
+        if aboutBlockJson:
+            jsonText = aboutBlockJson[0]
+            jsonText = jsonText.strip().replace("\t", "").replace("\n", "").replace("\r", "")
+            about = json.loads(jsonText)
+            authorName = about["publisher"]["name"]
 
         return authorName
 
@@ -441,10 +440,16 @@ class LrytasContentScraper(ContentScraperAbstract):
         return self.getNotFoundValue()
 
     def getArticleScope(self):
-        articleTitleTag = self._soup.find("h1", attrs={"class": "article__title"})
-        articleIntroTag = self._soup.find("div", attrs={"class":"article__text"})
+        script = self._soup.find("body").find("script").contents[0]
+        script = script.strip().replace("\t", "").replace("\n", "")
 
-        scopes = [articleTitleTag, articleIntroTag]
+        pos = script.find("{")
+        pos2 = script.find("\r")
+
+        jsonbby = script[pos:pos2 - 1]
+        articleJsonObj = json.loads(jsonbby)
+
+        scopes = [articleJsonObj["clearContent"], articleJsonObj["title"]]
         return scopes
 
     def getNotFoundValue(self):
@@ -488,10 +493,7 @@ class LrytasContentScraper(ContentScraperAbstract):
         return articleDate
 
     def getPageContent(self, resourceLink):
-        #cdi = globalCdiCache[os.getpid()]
-        #cdi.get(resourceLink)
-        #pageContent = cdi.page_source
-        return pageContent
+        return httpget(resourceLink)
 
     def createParser(self, pageContent):
         self._pageContent = pageContent
@@ -546,7 +548,7 @@ class SimpleContentScraper:
             if pageContent is not None:
                 contentScraperStrategy.createParser(pageContent)
                 allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
-                contentScraperStrategy.isArticleCompliant()
+
                 if self.isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
                     result.append(self.getSourceHostname(cleanUrl))
                     result.append(contentScraperStrategy.getArticleTitle())
@@ -646,7 +648,10 @@ class SimpleContentScraper:
         for pattern in self._regexCompliancePatterns:
             matches = []
             for scope in articleScopes:
-                scopeText = scope.text
+                try:
+                    scopeText = scope.text
+                except:
+                    scopeText = scope
                 matches.append(re.findall(pattern, scopeText, flags=re.IGNORECASE))
 
             allMatches.append(matches)
@@ -672,7 +677,7 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
-    #cpuCount = 1
+    cpuCount = 1
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
