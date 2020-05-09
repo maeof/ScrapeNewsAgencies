@@ -259,12 +259,13 @@ class LrytasLinkScraper(LinkScraperAbstract):
         soup = BeautifulSoup(pageContent, 'html.parser')
         links = set()
 
-        for article in soup.findAll("article", attrs={"class":"post"}):
-            articleLinkTag = article.find("a")
-            if articleLinkTag:
-                articleLink = articleLinkTag.get("href")
-                if self._isLinkValid(articleLink):
-                    links.add(articleLink)
+        if soup:
+            for article in soup.findAll("article", attrs={"class":"post"}):
+                articleLinkTag = article.find("a")
+                if articleLinkTag:
+                    articleLink = articleLinkTag.get("href")
+                    if self._isLinkValid(articleLink):
+                        links.add(articleLink)
 
         return links
 
@@ -277,16 +278,21 @@ class LrytasLinkScraper(LinkScraperAbstract):
         cdi.get(resourceLink)
         timesLoaded = 1
 
-        continueLoading = True
-        while continueLoading:
-            WebDriverWait(cdi, 10).until(EC.element_to_be_clickable(loadMoreElement)).click()
-            timesLoaded += 1
+        pageContent = None
+        try:
+            continueLoading = True
+            while continueLoading:
+                WebDriverWait(cdi, 10).until(EC.element_to_be_clickable(loadMoreElement)).click()
+                timesLoaded += 1
 
-            if (timesLoaded % 25) == 0:
-                partialPageContent = cdi.page_source
-                continueLoading = self._continueLoading(partialPageContent)
+                if (timesLoaded % 25) == 0:
+                    partialPageContent = cdi.page_source
+                    continueLoading = self._continueLoading(partialPageContent)
 
-        pageContent = cdi.page_source
+            pageContent = cdi.page_source
+        except Exception as ex:
+            print("Exception has occured on iteration " + str(timesLoaded) + ": " + str(ex))
+
         cdi.quit()
 
         return pageContent
