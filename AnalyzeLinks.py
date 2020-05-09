@@ -1,6 +1,13 @@
 import abc
 import csv
 
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+
 from urllib.parse import urlparse
 
 from GetLinks3 import httpget
@@ -12,12 +19,15 @@ from bs4 import BeautifulSoup
 
 import os
 from datetime import datetime
+from datetime import date
 
 import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
 import re
+
+globalCdiCache = {}
 
 def httpget(url):
     """
@@ -156,11 +166,17 @@ class ContentScraperAbstract(object):
     def isArticleCompliant(self):
         """Required Method"""
 
+    @abc.abstractmethod
+    def getPageContent(self, resourceLink):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def createParser(self, pageContent):
+        """Required Method"""
+
 class FifteenContentScraper(ContentScraperAbstract):
-    def __init__(self, url, pageContent):
+    def __init__(self, url):
         self._url = url
-        self._pageContent = pageContent
-        self._soup = BeautifulSoup(pageContent, "html.parser")
 
     def getArticleDatePublished(self):
         datePublishedTag = self._soup.find("meta", attrs={"itemprop":"datePublished"})
@@ -224,11 +240,16 @@ class FifteenContentScraper(ContentScraperAbstract):
     def isArticleCompliant(self):
         return True
 
-class DelfiContentScraper(ContentScraperAbstract):
-    def __init__(self, url, pageContent):
-        self._url = url
+    def getPageContent(self, resourceLink):
+        return httpget(resourceLink)
+
+    def createParser(self, pageContent):
         self._pageContent = pageContent
         self._soup = BeautifulSoup(pageContent, "html.parser")
+
+class DelfiContentScraper(ContentScraperAbstract):
+    def __init__(self, url):
+        self._url = url
 
     def getArticleDatePublished(self):
         datePublishedTag = self._soup.find("div", attrs={"class":"source-date"})
@@ -347,11 +368,17 @@ class DelfiContentScraper(ContentScraperAbstract):
     def isArticleCompliant(self):
         return True
 
-class LrytasContentScraper(ContentScraperAbstract):
-    def __init__(self, url, pageContent):
-        self._url = url
+    def getPageContent(self, resourceLink):
+        return httpget(resourceLink)
+
+    def createParser(self, pageContent):
         self._pageContent = pageContent
         self._soup = BeautifulSoup(pageContent, "html.parser")
+
+class LrytasContentScraper(ContentScraperAbstract):
+    def __init__(self, url, webDriverPath):
+        self._url = url
+        self._webDriverPath = webDriverPath
 
     def getArticleDatePublished(self):
         datePublishedTag = self._soup.find("h3", attrs={"class":"article__date"})
@@ -424,7 +451,51 @@ class LrytasContentScraper(ContentScraperAbstract):
         return "n/a"
 
     def isArticleCompliant(self):
-        return True
+        isCompliant = True
+        articleDate = self._getArticleDate()
+
+        if articleDate and (articleDate < date(2019, 1, 1) or articleDate > date(2019, 12, 31)):
+            isCompliant = False
+
+        return isCompliant
+
+    def _getArticleDate(self):
+        url = self._url
+        parsedUrl = urlparse(url)
+
+        sectorPosition = 0
+        pathParts = parsedUrl.path[1:].split("/")
+        articleDate = None
+        for sector in pathParts:
+            try:
+                value = int(sector)
+            except:
+                value = 0
+
+            if value != 0:
+                year = value
+                try:
+                    month = int(pathParts[sectorPosition + 1])
+                    day = int(pathParts[sectorPosition + 2])
+                    articleDate = date(year, month, day)
+                except:
+                    articleDate = None
+
+                break
+
+            sectorPosition += 1
+
+        return articleDate
+
+    def getPageContent(self, resourceLink):
+        #cdi = globalCdiCache[os.getpid()]
+        #cdi.get(resourceLink)
+        #pageContent = cdi.page_source
+        return pageContent
+
+    def createParser(self, pageContent):
+        self._pageContent = pageContent
+        self._soup = BeautifulSoup(pageContent, "html.parser")
 
 class SimpleContentScraper:
     def __init__(self, inputFilePath, workSessionFolder, cpuCount, regexCompliancePatterns):
@@ -467,15 +538,15 @@ class SimpleContentScraper:
 
     def processUrl(self, url):
         cleanUrl = self.cleanurl(url)
-        pageContent = httpget(cleanUrl) #TODO: strategies: cache, web. for cache read file, for web GET
+        contentScraperStrategy = self.getContentScraperStrategy(url)
 
+        pageContent = contentScraperStrategy.getPageContent(cleanUrl) #TODO: strategies: cache, web. for cache read file, for web GET
         result = []
-
         try:
             if pageContent is not None:
-                contentScraperStrategy = self.getContentScraperStrategy(url, pageContent)
+                contentScraperStrategy.createParser(pageContent)
                 allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
-
+                contentScraperStrategy.isArticleCompliant()
                 if self.isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
                     result.append(self.getSourceHostname(cleanUrl))
                     result.append(contentScraperStrategy.getArticleTitle())
@@ -539,16 +610,23 @@ class SimpleContentScraper:
             currentResult.append(count)
         return currentResult
 
-    def getContentScraperStrategy(self, url, pageContent):
+    def getContentScraperStrategy(self, url):
         parsedUrl = urlparse(url)
         contentScraperStrategy = ContentScraperAbstract()
 
         if parsedUrl.hostname == "www.15min.lt":
-            contentScraperStrategy = FifteenContentScraper(url, pageContent)
+            contentScraperStrategy = FifteenContentScraper(url)
         elif parsedUrl.hostname == "www.delfi.lt":
-            contentScraperStrategy = DelfiContentScraper(url, pageContent)
+            contentScraperStrategy = DelfiContentScraper(url)
         elif parsedUrl.hostname == "www.lrytas.lt":
-            contentScraperStrategy = LrytasContentScraper(url, pageContent)
+            contentScraperStrategy = LrytasContentScraper(url, "c:\\data\\chromedriver\\chromedriver.exe")
+
+            #pid = os.getpid()
+            #if pid not in globalCdiCache:
+                #chrome_options = Options()
+                #chrome_options.add_argument("--headless")
+                #cdi = webdriver.Chrome("c:\\data\\chromedriver\\chromedriver.exe", options=chrome_options)
+                #globalCdiCache[pid] = cdi
         else:
             raise Exception("Could not pick content scraper strategy for " + url)
 
@@ -594,7 +672,7 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
-    cpuCount = 1
+    #cpuCount = 1
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
@@ -603,6 +681,10 @@ def main():
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
         writer = csv.writer(resultFile)
         writer.writerows(scrapeResult)
+
+    #for eachCdi in globalCdiCache:
+        #if eachCdi:
+            #eachCdi.quit()
 
 if __name__ == '__main__':
     main()
