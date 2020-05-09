@@ -354,63 +354,42 @@ class LrytasContentScraper(ContentScraperAbstract):
         self._soup = BeautifulSoup(pageContent, "html.parser")
 
     def getArticleDatePublished(self):
-        datePublishedTag = self._soup.find("div", attrs={"class":"source-date"})
-        if (datePublishedTag is None):
-            datePublishedTag = self._soup.find("div", attrs={"class":"delfi-source-date"})
+        datePublishedTag = self._soup.find("h3", attrs={"class":"article__date"})
 
-        datePublished = ""
-        if datePublishedTag is not None:
+        datePublished = None
+        if datePublishedTag:
             datePublished = datePublishedTag.text.strip()
-        else:
-            datePublished = self.getNotFoundValue()
+            commaPosition = datePublished.find(",")
+
+            if commaPosition != 0:
+                datePublished = datePublished[0:commaPosition].strip()
 
         return datePublished
 
     def getArticleDateModified(self):
-        dateModified = self.getNotFoundValue()
+        dateModified = None
         return dateModified
 
     def getArticleTitle(self):
-        articleTitle = self._getRegularArticleTitle()
+        articleTitleTag = self._soup.find("h1", attrs={"class": "article__title"})
 
-        if len(articleTitle) == 0:
-            articleTitle = self._getMultimediaArticleTitle()
-
-        if len(articleTitle) == 0:
-            articleTitle = self.getNotFoundValue()
-
-        return articleTitle
-
-    def _getRegularArticleTitle(self):
-        articleTitleTag = self._soup.find("div", attrs={"class": "article-title"})
-
-        articleTitle = ""
-        if articleTitleTag is not None:
-            articleTitle = articleTitleTag.find("h1").text.strip()
-            articleTitle = articleTitle.replace("\n", " ")
-            articleTitle = articleTitle.replace("\t", "")
-
-        return articleTitle
-
-    def _getMultimediaArticleTitle(self):
-        articleTitleTag = self._soup.find("h1", attrs={"itemprop": "headline"})
-
-        articleTitle = ""
-        if articleTitleTag is not None:
+        if articleTitleTag:
             articleTitle = articleTitleTag.text.strip()
             articleTitle = articleTitle.replace("\n", " ")
             articleTitle = articleTitle.replace("\t", "")
+        else:
+            articleTitle = self.getNotFoundValue()
 
         return articleTitle
 
     def getArticleCategory(self):
         categoryName = ""
 
-        categoryFatherTag = self._soup.find("div", attrs={"class":"delfi-breadcrumbs delfi-category-location"})
+        categoryFatherTag = self._soup.find("div", attrs={"class":"article__tags"})
         if categoryFatherTag is not None:
-            categoryTags = categoryFatherTag.findAll("span", attrs={"itemprop":"itemListElement"})
+            categoryTags = categoryFatherTag.findAll("a")
 
-        if categoryTags is not None:
+        if categoryTags:
             for categoryTag in categoryTags:
                 if len(categoryName) != 0:
                     categoryName += " > "
@@ -422,11 +401,9 @@ class LrytasContentScraper(ContentScraperAbstract):
         return categoryName
 
     def getArticleAuthor(self):
-        authorTag = self._soup.find("div", attrs={"class":"delfi-author-name"})
-        if authorTag is None:
-            authorTag = self._soup.find("div", attrs={"class":"delfi-source-name"})
+        authorTag = self._soup.find("a", attrs={"class":"article__authorName"})
 
-        if authorTag is not None:
+        if authorTag:
             authorName = authorTag.text.strip()
         else:
             authorName = self.getNotFoundValue()
@@ -434,34 +411,13 @@ class LrytasContentScraper(ContentScraperAbstract):
         return authorName
 
     def getArticleAuthorPosition(self):
-        authorTag = self._soup.find("div", attrs={"class":"delfi-author-name"})
-
-        authorPosition = ""
-        if authorTag is not None:
-            authorBioLinkTag = authorTag.find("a")
-            if authorBioLinkTag is not None:
-                authorBioLink = authorBioLinkTag.get("href")
-                bioPageContent = httpget(authorBioLink)
-
-                if bioPageContent is not None:
-                    babySoup = BeautifulSoup(bioPageContent, "html.parser")
-                    authorPosition = babySoup.find("div", attrs={"class":"title"}).text.strip()
-
-                    if len(authorPosition) == 0:
-                        authorPosition = self.getNotFoundValue()
-        else:
-            authorPosition = self.getNotFoundValue()
-
-        return authorPosition
+        return self.getNotFoundValue()
 
     def getArticleScope(self):
-        articleTitleTag = self._soup.find("div", attrs={"class":"article-title"})
-        articleIntroTag = self._soup.find("div", attrs={"class":"delfi-article-lead"})
+        articleTitleTag = self._soup.find("h1", attrs={"class": "article__title"})
+        articleIntroTag = self._soup.find("div", attrs={"class":"article__text"})
 
-        bigColumnTag = self._soup.find("div", attrs={"class": "col-xs-8"})
-        articleContentTag = bigColumnTag.find("div") #or bigColumnTag.div (finds the first <div> in bigColumnTag because delfi
-
-        scopes = [articleTitleTag, articleIntroTag, articleContentTag]
+        scopes = [articleTitleTag, articleIntroTag]
         return scopes
 
     def getNotFoundValue(self):
@@ -638,6 +594,7 @@ def main():
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
+    cpuCount = 1
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
