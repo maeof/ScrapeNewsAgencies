@@ -345,7 +345,7 @@ class SimpleContentScraper:
         self._regexCompliancePatterns = regexCompliancePatterns
 
     def scrape(self):
-        fileContent = self.getContentFromInputFile()
+        fileContent = self.getContentFromInputFile() #TODO: strategies: cache, web
         fileContent = self.filterFile(fileContent)
         workUrls = tqdm(fileContent)
 
@@ -378,7 +378,7 @@ class SimpleContentScraper:
 
     def processUrl(self, url):
         cleanUrl = self.cleanurl(url)
-        pageContent = httpget(cleanUrl)
+        pageContent = httpget(cleanUrl) #TODO: strategies: cache, web. for cache read file, for web GET
 
         result = []
 
