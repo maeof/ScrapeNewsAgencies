@@ -1,20 +1,17 @@
 import abc
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+
 import time
 
 import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
-
-#chrome_options = Options()
-#chrome_options.add_argument("--headless")
-
-#service = Service('c:\\data\\chromedriver\\chromedriver.exe')
-#service.start()
-#cdi = webdriver.Chrome("c:\\data\\chromedriver\\chromedriver.exe", options=chrome_options)
-#cdi = webdriver.Remote(service.service_url)
 
 from requests import get
 from requests.exceptions import RequestException
@@ -143,6 +140,10 @@ class LinkScraperAbstract(object):
     def getLinksFromPage(self, pageContent):
         """Required Method"""
 
+    @abc.abstractmethod
+    def getPageContent(self, resourceLink):
+        """Required Method"""
+
 class FifteenLinkScraper(LinkScraperAbstract):
     def __init__(self, fromDate, toDate, seedUrl, params):
         self._fromDate = fromDate
@@ -181,6 +182,9 @@ class FifteenLinkScraper(LinkScraperAbstract):
                 links.add(a.get('href'))
 
         return links
+
+    def getPageContent(self, resourceLink):
+        return httpget(resourceLink)
 
 class DelfiLinkScraper(LinkScraperAbstract):
     def __init__(self, fromDate, toDate, seedUrl, params, iterationsCount = 0):
@@ -221,7 +225,107 @@ class DelfiLinkScraper(LinkScraperAbstract):
 
         return links
 
-#class LrytasLinkScraper(LinkScraperAbstract): TODO: implement for LRytas
+    def getPageContent(self, resourceLink):
+        return httpget(resourceLink)
+
+class LrytasLinkScraper(LinkScraperAbstract):
+    def __init__(self, fromDate, toDate, seedUrl, iterationsCount, webDriverPath):
+        self._fromDate = fromDate
+        self._toDate = toDate
+        self._seedUrl = seedUrl
+        self._iterationsCount = iterationsCount
+        self._webDriverPath = webDriverPath
+
+    def getWorkUrls(self):
+        workUrls = []
+        workUrls.append(self._seedUrl)
+        return workUrls
+
+    def getIterationsCount(self):
+        return self._iterationsCount
+
+    def getLinksFromPage(self, pageContent):
+        soup = BeautifulSoup(pageContent, 'html.parser')
+        links = set()
+
+        for article in soup.findAll("article", attrs={"class":"post"}):
+            articleLinkTag = article.find("a")
+            if articleLinkTag is not None:
+                articleLink = articleLinkTag.get('href')
+                if self._isLinkValid(articleLink):
+                    links.add(articleLinkTag.get('href'))
+
+        return links
+
+    def getPageContent(self, resourceLink):
+        chrome_options = Options()
+        #chrome_options.add_argument("--headless")
+        cdi = webdriver.Chrome(self._webDriverPath, options=chrome_options)
+
+        loadMoreElement = (By.ID, "loadMore")
+        cdi.get(resourceLink)
+        timesLoaded = 1
+
+        continueLoading = True
+        while continueLoading:
+            WebDriverWait(cdi, 10).until(EC.element_to_be_clickable(loadMoreElement)).click()
+            timesLoaded += 1
+
+            if (timesLoaded % 25) == 0:
+                partialPageContent = cdi.page_source
+                continueLoading = self._continueLoading(partialPageContent)
+
+        pageContent = cdi.page_source
+        cdi.quit()
+
+        return pageContent
+
+    def _continueLoading(self, pageContent):
+        continueLoading = True
+
+        soup = BeautifulSoup(pageContent, 'html.parser')
+        lastArticleTag = soup.findAll("article", attrs={"class":"post"})[-1]
+        lastArticleLinkTag = lastArticleTag.find("a")
+
+        lastArticleDate = None
+
+        if lastArticleLinkTag:
+            url = lastArticleLinkTag.get("href")
+            parsedUrl = urlparse(url)
+
+            sectorPosition = 0
+            pathParts = parsedUrl.path[1:].split("/")
+            for sector in pathParts:
+                try:
+                    value = int(sector)
+                except:
+                    value = 0
+
+                if value != 0:
+                    year = value
+                    try:
+                        month = int(pathParts[sectorPosition + 1])
+                        day = int(pathParts[sectorPosition + 2])
+                        lastArticleDate = date(year, month, day)
+                    except:
+                        lastArticleDate = None
+
+                    break
+
+                sectorPosition += 1
+
+        if lastArticleDate and lastArticleDate < self._fromDate:
+            continueLoading = False
+
+        return continueLoading
+
+    def _isLinkValid(self, link):
+        isValid = True
+
+        if len(link) == 0:
+            isValid = False
+
+        return isValid
 
 class SimpleLinkScraper:
     def __init__(self, cpuCount, linkScraperStrategy):
@@ -229,12 +333,12 @@ class SimpleLinkScraper:
         self._linkScraperStrategy = linkScraperStrategy
 
     def processUrl(self, url):
-        pageContent = httpget(url)
-        linksFromPage = self.getLinksFromPage(pageContent)
+        pageContent = self._linkScraperStrategy.getPageContent(url)
+        linksFromPage = self._linkScraperStrategy.getLinksFromPage(pageContent)
         return linksFromPage
 
     def getLinks(self):
-        workUrls = self.getWorkUrls()
+        workUrls = self._linkScraperStrategy.getWorkUrls()
         inputs = tqdm(workUrls)
 
         links = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in inputs)
@@ -246,12 +350,6 @@ class SimpleLinkScraper:
         for eachSet in setsOfLinks:
             merged = merged.union(eachSet)
         return merged
-
-    def getWorkUrls(self):
-        return self._linkScraperStrategy.getWorkUrls()
-
-    def getLinksFromPage(self, pageContent):
-        return self._linkScraperStrategy.getLinksFromPage(pageContent)
 
 def main(args):
     workFolder = "C:\Data\GetLinks"
@@ -267,37 +365,27 @@ def main(args):
     delfiParams = "?fromd={0}&tod={1}&channel=1&category=0&query=&page={2}" #delfi date in format: day.month.year
     delfiIterationsCount = 866
 
+    # Iterations justification: each click on "Daugiau" loads 24 unique articles. We assume that after 1000 iterations we'll reach
+    # articles whose date of publication is in the range of fromDate and toDate. It is like so because there is no trivial way to access
+    # the archive in lrytas.lt portal.
+    lrytasSeedUrl = "https://www.lrytas.lt/lietuvosdiena/aktualijos/"
+    lrytasIterationsCount = 1000
+    lrytasCpuCount = 1
+    lrytasWebDriverPath = "c:\\data\\chromedriver\\chromedriver.exe"
+
     cpuCount = multiprocessing.cpu_count()
 
-    fifteenLinkScraper = SimpleLinkScraper(cpuCount, FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
-    fifteenLinks = fifteenLinkScraper.getLinks()
-    saveToFile(workSessionFolder, fifteenLinks)
+    #fifteenLinkScraper = SimpleLinkScraper(cpuCount, FifteenLinkScraper(fromDate, toDate, fifteenSeedUrl, fifteenParams))
+    #fifteenLinks = fifteenLinkScraper.getLinks()
+    #saveToFile(workSessionFolder, fifteenLinks)
 
-    delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
-    delfiLinks = delfiLinkScraper.getLinks()
-    saveToFile(workSessionFolder, delfiLinks)
+    #delfiLinkScraper = SimpleLinkScraper(cpuCount, DelfiLinkScraper(fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    #delfiLinks = delfiLinkScraper.getLinks()
+    #saveToFile(workSessionFolder, delfiLinks)
 
-    #print(b.instanceMethod())
-
-    # linksFilePath = "links.txt"
-    # pagesCount = 10
-    #
-    # file = open(linksFilePath, "r")
-    # fileLines = file.readlines()
-    # file.close()
-    #
-    # incrementalUrls = []
-    # regularUrls = []
-    #
-    # for line in fileLines:
-    #     if (isIncrementalUrl(line)):
-    #         incrementalUrls.append(line)
-    #     else:
-    #         regularUrls.append(line)
-    #
-    # getLinksFromIncrementalUrls(incrementalUrls, pagesCount)
-    # #getLinks(regularUrls)
-    #
+    lrytasLinkScraper = SimpleLinkScraper(lrytasCpuCount, LrytasLinkScraper(fromDate, toDate, lrytasSeedUrl, lrytasIterationsCount, lrytasWebDriverPath))
+    lrytasLinks = lrytasLinkScraper.getLinks()
+    saveToFile(workSessionFolder, lrytasLinks)
 
 if __name__ == '__main__':
     main(sys.argv)

@@ -422,10 +422,9 @@ class SimpleContentScraper:
 
         outputFileName = self._workSessionFolder + "\\" + str(os.getpid()) + "_" + self._getCurrentDateTime() + safeUrl + ".htm"
 
-        if pageContent is not None:
-            pageContentFile = open(outputFileName, "w+", encoding="utf-8")
-            pageContentFile.writelines(pageContent)
-            pageContentFile.close()
+        pageContentFile = open(outputFileName, "w+", encoding="utf-8")
+        pageContentFile.writelines(pageContent)
+        pageContentFile.close()
 
         return outputFileName
 
@@ -514,7 +513,6 @@ def main():
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
         writer = csv.writer(resultFile)
         writer.writerows(scrapeResult)
-
 
 if __name__ == '__main__':
     main()
