@@ -59,6 +59,10 @@ def isResponseOK(resp):
     Returns True if the response seems to be HTML, False otherwise.
     """
     content_type = resp.headers['Content-Type'].lower()
+
+    if resp.status_code != 200:
+        saveToFile("C:\Data\GetLinks", [resp.status_code, resp.url])
+
     return (resp.status_code == 200
             and content_type is not None
             and content_type.find('html') > -1)
@@ -282,6 +286,7 @@ class LrytasLinkScraper(LinkScraperAbstract):
         try:
             continueLoading = True
             while continueLoading:
+                time.sleep(1)
                 WebDriverWait(cdi, 10).until(EC.element_to_be_clickable(loadMoreElement)).click()
                 timesLoaded += 1
 

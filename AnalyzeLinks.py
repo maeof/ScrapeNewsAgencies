@@ -21,14 +21,13 @@ import json
 import os
 from datetime import datetime
 from datetime import date
+import time
 
 import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
 import re
-
-globalCdiCache = {}
 
 def httpget(url):
     """
@@ -53,10 +52,22 @@ def isResponseOK(resp):
     Returns True if the response seems to be HTML, False otherwise.
     """
     content_type = resp.headers['Content-Type'].lower()
+
+    if resp.status_code != 200:
+        saveToFile("C:\Data\AnalyzeLinks", [resp.status_code, resp.url])
+
     return (resp.status_code == 200
             and content_type is not None
             and content_type.find('html') > -1)
 
+
+def saveToFile(path, links):
+    fileNameWithPath = path + "\\" + "loghttperrcodes.txt"
+    file = open(fileNameWithPath, "a+")
+    for link in links:
+        if link:
+            file.write(str(link) + "\n")
+    file.close()
 
 def getCurrentDateTime():
     now = datetime.now()
@@ -511,6 +522,7 @@ class LrytasContentScraper(ContentScraperAbstract):
         return articleDate
 
     def getPageContent(self, resourceLink):
+        time.sleep(1)
         return httpget(resourceLink)
 
     def createParser(self, pageContent):
@@ -560,11 +572,12 @@ class SimpleContentScraper:
         cleanUrl = self.cleanurl(url)
         contentScraperStrategy = self.getContentScraperStrategy(url)
 
-        pageContent = contentScraperStrategy.getPageContent(cleanUrl) #TODO: strategies: cache, web. for cache read file, for web GET
+        # TODO: strategies: cache, web. for cache read file, for web GET
+        pageContent = contentScraperStrategy.getPageContent(cleanUrl)
         result = []
         try:
             if pageContent is not None:
-                contentScraperStrategy.createParser(pageContent)
+                contentScraperStrategy.createParser(pageContent) #TODO: rename to init
                 allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
 
                 if self.isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
@@ -669,7 +682,7 @@ class SimpleContentScraper:
                 try:
                     scopeText = scope.text
                 except:
-                    scopeText = scope
+                    scopeText = str(scope)
                 matches.append(re.findall(pattern, scopeText, flags=re.IGNORECASE))
 
             allMatches.append(matches)
@@ -686,6 +699,57 @@ class SimpleContentScraper:
                     break
 
         return isCompliant
+
+class ContentFetcherAbstract(object):
+    __metaclass__ = abc.ABCMeta
+
+    @abc.abstractmethod
+    def getContent(self, resource):
+        """Required Method"""
+
+class FileContentFetcher(ContentFetcherAbstract):
+    def __init__(self):
+        self._a = 1
+
+    def getContent(self, resource):
+        return
+
+class HttpContentFetcher(ContentFetcherAbstract):
+    def __init__(self):
+        self._a = 1
+
+    def getContent(self, resource):
+        return self._get(resource)
+
+    def _get(self, url):
+        """
+        Attempts to get the content at `url` by making an HTTP GET request.
+        If the content-type of response is some kind of HTML/XML, return the
+        text content, otherwise return None.
+        """
+        try:
+            with closing(get(url, stream=True)) as resp:
+                if self._isResponseOK(resp):
+                    return resp.text
+                else:
+                    return None
+
+        except RequestException as e:
+            print(str(e))
+            return None
+
+    def _isResponseOK(self, resp):
+        """
+        Returns True if the response seems to be HTML, False otherwise.
+        """
+        content_type = resp.headers['Content-Type'].lower()
+
+        if resp.status_code != 200:
+            saveToFile("C:\Data\AnalyzeLinks", [resp.status_code, resp.url])
+
+        return (resp.status_code == 200
+                and content_type is not None
+                and content_type.find('html') > -1)
 
 def main():
     linksFile = "C:\\Data\\AnalyzeLinks\\links.csv"
