@@ -1,4 +1,4 @@
-from LinkScraperAbstract import FifteenLinkScraper, DelfiLinkScraper, LrytasLinkScraper
+from LinkScraper import FifteenLinkScraper, DelfiLinkScraper, LrytasLinkScraper
 import ScraperHelper as helper
 
 from datetime import date
