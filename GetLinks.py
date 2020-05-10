@@ -1,117 +1,73 @@
-from requests import get
-from requests.exceptions import RequestException
-from contextlib import closing
-from bs4 import BeautifulSoup
-import urllib3 as urllib
-import sys
-import os
-from datetime import datetime
+from LinkScraperAbstract import FifteenLinkScraper, DelfiLinkScraper, LrytasLinkScraper
+import ScraperHelper as helper
 
-def getCurrentDateTime():
-    now = datetime.now()
-    return now.strftime("%d_%m_%Y_%H_%M_%S")
+from datetime import date
 
-def createWorkSessionFolder(createInPath):
-    createdFolder = createInPath + "\\" + "session_" + getCurrentDateTime()
-    os.mkdir(createdFolder)
-    return createdFolder
+import multiprocessing
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
-workFolder = "C:\Data\GetLinks"
-workSessionFolder = createWorkSessionFolder(workFolder)
+class SimpleLinkScraper:
+    def __init__(self, linkScraperStrategy):
+        self._linkScraperStrategy = linkScraperStrategy
 
-def httpget(url):
-    """
-    Attempts to get the content at `url` by making an HTTP GET request.
-    If the content-type of response is some kind of HTML/XML, return the
-    text content, otherwise return None.
-    """
-    try:
-        with closing(get(url, stream=True)) as resp:
-            if isResponseOK(resp):
-                return resp.content
-            else:
-                return None
+    def getLinks(self):
+        workUrls = self._linkScraperStrategy.getWorkUrls()
+        inputs = tqdm(workUrls)
 
-    except RequestException as e:
-        log_error('Error during requests to {0} : {1}'.format(url, str(e)))
-        return None
+        links = Parallel(n_jobs=self._linkScraperStrategy.getCpuCount())(delayed(self._processUrl)(url) for url in inputs)
 
-def isResponseOK(resp):
-    """
-    Returns True if the response seems to be HTML, False otherwise.
-    """
-    content_type = resp.headers['Content-Type'].lower()
-    return (resp.status_code == 200
-            and content_type is not None
-            and content_type.find('html') > -1)
+        return self._mergeResults(links)
 
-def getIncrementalUrl(url, i):
-    return url.replace("{0}", str(i))
+    def _processUrl(self, url):
+        pageContent = self._linkScraperStrategy.getPageContent(url)
+        linksFromPage = self._linkScraperStrategy.getLinksFromPage(pageContent)
+        return linksFromPage
 
-def isIncrementalUrl(url):
-    if (url.find("{0}") != -1):
-        return True
-    else:
-        return False
+    def _mergeResults(self, setsOfLinks):
+        merged = set()
+        for eachSet in setsOfLinks:
+            merged = merged.union(eachSet)
+        return merged
 
-def getLinksFromPageContent(pageContent):
-    soup = BeautifulSoup(pageContent, 'html.parser')
-    links = []
+def main():
+    workFolder = "C:\Data\GetLinks"
+    workSessionFolder = helper.createWorkSessionFolder(workFolder)
 
-    for a in soup.find_all('a'):
-        links.append(a.get('href'))
+    fromDate = date(2019, 1, 1)
+    toDate = date(2019, 12, 31)
+    #toDate = date(2019, 1, 2) #Test
+    #fromDate = date(2020, 5, 9) #Test
 
-    return links
+    fifteenSeedUrl = "https://www.15min.lt/naujienos/aktualu/lietuva"
+    fifteenParams = "?offset={0}%2023:59:59" #15min date format: year-month-day
 
-def saveToFile(path, links):
-    fileNameWithPath = path + "\\" + "result.csv"
-    file = open(fileNameWithPath, "w+")
-    for link in links:
-        if (link is not None):
-            file.write(link + "\r\n")
-    file.close()
+    delfiSeedUrl = "https://www.delfi.lt/archive/index.php"
+    delfiParams = "?fromd={0}&tod={1}&channel=1&category=0&query=&page={2}" #delfi date in format: day.month.year
+    delfiIterationsCount = 866
+    #delfiIterationsCount = 2 #Test
 
-def getLinks(regularUrls):
-    for url in regularUrls:
-        pageContent = httpget(url)
-        links = getLinksFromPageContent(pageContent)
-        saveToFile(workSessionFolder, links)
+    # Iterations justification: each click on "Daugiau" loads 24 unique articles. We load articles forever and at each 25th
+    # load we check the last article's date from it's url - if it's still newer than fromDate - we continue the articles loading.
+    # This strategy was set up to work like so because there is no trivial way to access the archive in lrytas.lt portal.
+    lrytasSeedUrl = "https://www.lrytas.lt/lietuvosdiena/aktualijos/"
+    lrytasWebDriverPath = "c:\\data\\chromedriver\\chromedriver.exe"
 
-def getLinksFromIncrementalUrls(incrementalUrls, pagesCount):
-    for i in range(1, pagesCount):
-        for url in incrementalUrls:
-            urlForRequest = getIncrementalUrl(url, i)
-            pageContent = httpget(urlForRequest)
-            links = getLinksFromPageContent(pageContent)
-            saveToFile(workSessionFolder, links)
+    cpuCount = multiprocessing.cpu_count()
+    #cpuCount = 1 #Test
 
-def validateArgs(args):
-    if (args[1] is None or args[2] is None):
-        print("Wrong arguments. 1st argument is the file of links, 2nd argument is the incremental value of how many pages to view.")
-        return False
+    fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(cpuCount, fromDate, toDate, fifteenSeedUrl, fifteenParams))
+    fifteenLinks = fifteenLinkScraper.getLinks()
+    helper.saveToFile(workSessionFolder, fifteenLinks)
 
-def main(args):
-    if (validateArgs(args) == False):
-        return
+    delfiLinkScraper = SimpleLinkScraper(DelfiLinkScraper(cpuCount, fromDate, toDate, delfiSeedUrl, delfiParams, delfiIterationsCount))
+    delfiLinks = delfiLinkScraper.getLinks()
+    helper.saveToFile(workSessionFolder, delfiLinks)
 
-    linksFilePath = str(args[1])
-    pagesCount = int(args[2])
+    lrytasLinkScraper = SimpleLinkScraper(LrytasLinkScraper(fromDate, toDate, lrytasSeedUrl, lrytasWebDriverPath))
+    lrytasLinks = lrytasLinkScraper.getLinks()
+    helper.saveToFile(workSessionFolder, lrytasLinks)
 
-    file = open(linksFilePath, "r")
-    fileLines = file.readlines()
-    file.close()
-
-    incrementalUrls = []
-    regularUrls = []
-
-    for line in fileLines:
-        if (isIncrementalUrl(line)):
-            incrementalUrls.append(line)
-        else:
-            regularUrls.append(line)
-
-    getLinksFromIncrementalUrls(incrementalUrls, pagesCount)
-    getLinks(regularUrls)
 
 if __name__ == '__main__':
-    main(sys.argv)
+    main()
