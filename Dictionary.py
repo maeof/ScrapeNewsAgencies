@@ -1,7 +1,5 @@
 import abc
 
-import csv
-
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -69,8 +67,12 @@ def processWork(work, fetcher):
     text = text.translate(translation_table)
     text = text.replace("\n", " ")
     text = text.replace("\t", "")
+    text = text.replace("–", " ")
+    text = text.strip()
 
     for word in text.split(" "):
+        word = word.strip()
+
         if len(word) == 0:
             continue
 
@@ -103,9 +105,11 @@ def main():
             else:
                 wordDict[key] = wordDict[key] + dictionary[key]
 
-    with open(dictionariesPath + "\\" + "dictionary_" + getCurrentDateTime(), "w+", encoding="utf-8", newline='') as resultFile:
-        writer = csv.writer(resultFile)
-        writer.writerows(wordDict)
+    dictFileName = dictionariesPath + "\\" + "dictionary_" + getCurrentDateTime() + ".csv"
+    resultFile = open(dictFileName, "w+", encoding="utf-8")
+    for key in wordDict:
+        resultFile.write(key + "," + str(wordDict[key]) + "\n")
+    resultFile.close()
 
 if __name__ == '__main__':
     main()
