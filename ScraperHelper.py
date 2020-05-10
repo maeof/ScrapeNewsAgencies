@@ -18,7 +18,7 @@ def createWorkSessionFolder(createInPath):
 
 
 def saveToFile(path, links):
-    fileNameWithPath = path + "\\" + "result.csv"
+    fileNameWithPath = path + "\\" + "result.csv" #TODO: result.csv is hardcoded, make it dynamic
     file = open(fileNameWithPath, "a+")
     for link in links:
         if (link is not None):
@@ -40,7 +40,7 @@ def httpget(url):
                 return None
 
     except RequestException as e:
-        log_error('Error during requests to {0} : {1}'.format(url, str(e)))
+        log_error('Error during requests to {0} : {1}'.format(url, str(e))) #TODO: would this even work?
         return None
 
 
@@ -51,7 +51,7 @@ def isResponseOK(resp):
     content_type = resp.headers['Content-Type'].lower()
 
     if resp.status_code != 200:
-        saveToFile("C:\Data\GetLinks", [resp.status_code, resp.url])
+        saveToFile("C:\Data\GetLinks", [resp.status_code, resp.url]) #TODO: make it dynamic
 
     return (resp.status_code == 200
             and content_type is not None

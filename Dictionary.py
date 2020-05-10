@@ -72,7 +72,7 @@ def processWork(work, fetcher):
 
 def main():
     mypath = "C:\Data\deliverables\iteration3\sources"
-    mypath = "C:\Data\AnalyzeLinks\session_10_05_2020_17_48_14" #Test
+    #mypath = "C:\Data\AnalyzeLinks\session_10_05_2020_17_48_14" #Test
     dictionariesPath = "C:\Data\Dictionary"
     cpuCount = multiprocessing.cpu_count()
 
