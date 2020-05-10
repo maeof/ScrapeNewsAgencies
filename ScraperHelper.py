@@ -5,14 +5,17 @@ from requests import get
 from requests.exceptions import RequestException
 from contextlib import closing
 
+
 def getCurrentDateTime():
     now = datetime.now()
     return now.strftime("%d_%m_%Y_%H_%M_%S")
+
 
 def createWorkSessionFolder(createInPath):
     createdFolder = createInPath + "\\" + "session_" + getCurrentDateTime()
     os.mkdir(createdFolder)
     return createdFolder
+
 
 def saveToFile(path, links):
     fileNameWithPath = path + "\\" + "result.csv"
@@ -21,6 +24,7 @@ def saveToFile(path, links):
         if (link is not None):
             file.write(link + "\n")
     file.close()
+
 
 def httpget(url):
     """
@@ -38,6 +42,7 @@ def httpget(url):
     except RequestException as e:
         log_error('Error during requests to {0} : {1}'.format(url, str(e)))
         return None
+
 
 def isResponseOK(resp):
     """

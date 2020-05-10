@@ -52,7 +52,7 @@ class FileContentFetcher(ContentFetcherAbstract):
         elif resource.find("lrytaslt") != -1:
             contentScraperSuggestion = "www.lrytas.lt"
         else:
-            raise Exception("Could not pick content scraper strategy for " + url)
+            raise Exception("Could not pick content scraper strategy for " + resource)
 
         return contentScraperSuggestion
 

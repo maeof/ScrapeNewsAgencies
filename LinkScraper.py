@@ -15,6 +15,7 @@ from selenium.webdriver.common.by import By
 
 import ScraperHelper as helper
 
+
 class LinkScraperAbstract(object):
     __metaclass__ = abc.ABCMeta
 

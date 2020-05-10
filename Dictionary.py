@@ -1,38 +1,14 @@
-import abc
+import ScraperHelper as helper
+from AnalyzeLinks import SimpleContentScraper
+from ContentFetcher import FileContentFetcher
+from ContentScraper import FifteenContentScraper, DelfiContentScraper, LrytasContentScraper
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.common.by import By
-
-import time
+from bs4 import BeautifulSoup
 
 import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-from requests import get
-from requests.exceptions import RequestException
-from contextlib import closing
-from bs4 import BeautifulSoup
-import urllib3 as urllib
-from urllib.parse import urlparse
-import sys
-import os
-from os import listdir
-from os.path import isfile, join
-
-from datetime import datetime, date, timedelta
-
-from AnalyzeLinks import ContentFetcherAbstract
-from AnalyzeLinks import FileContentFetcher
-
-from AnalyzeLinks import SimpleContentScraper
-from AnalyzeLinks import FifteenContentScraper
-from AnalyzeLinks import DelfiContentScraper
-from AnalyzeLinks import LrytasContentScraper
 
 def cleanPageContent(html):
     soup = BeautifulSoup(html, "html.parser") # create a new bs4 object from the html data loaded
@@ -49,7 +25,8 @@ def cleanPageContent(html):
 
     return text
 
-def processWork(work, fetcher):
+
+def createDictionary(work, fetcher):
     scraper = SimpleContentScraper.getContentScraperStrategy(fetcher.getContentScraperSuggestion(work), work)
     scraper.createParser(fetcher.getContent(work))
     articleScopes = scraper.getArticleScope()
@@ -83,12 +60,19 @@ def processWork(work, fetcher):
 
     return wordsDict
 
-def getCurrentDateTime():
-    now = datetime.now()
-    return now.strftime("%d_%m_%Y_%H_%M_%S")
+
+def processWork(work, fetcher):
+    wordsDict = {}
+    try:
+        wordsDict = createDictionary(work, fetcher)
+    except Exception as ex:
+        print("Could not process, exception caught: " + str(ex))
+    return wordsDict
+
 
 def main():
     mypath = "C:\Data\deliverables\iteration3\sources"
+    mypath = "C:\Data\AnalyzeLinks\session_10_05_2020_17_48_14" #Test
     dictionariesPath = "C:\Data\Dictionary"
     cpuCount = multiprocessing.cpu_count()
 
@@ -105,7 +89,7 @@ def main():
             else:
                 wordDict[key] = wordDict[key] + dictionary[key]
 
-    dictFileName = dictionariesPath + "\\" + "dictionary_" + getCurrentDateTime() + ".csv"
+    dictFileName = dictionariesPath + "\\" + "dictionary_" + helper.getCurrentDateTime() + ".csv"
     resultFile = open(dictFileName, "w+", encoding="utf-8")
     for key in wordDict:
         resultFile.write(key + "," + str(wordDict[key]) + "\n")
