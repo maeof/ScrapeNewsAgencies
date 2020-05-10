@@ -32,115 +32,6 @@ from tqdm import tqdm
 
 import re
 
-def httpget(url):
-    """
-    Attempts to get the content at `url` by making an HTTP GET request.
-    If the content-type of response is some kind of HTML/XML, return the
-    text content, otherwise return None.
-    """
-    try:
-        with closing(get(url, stream=True)) as resp:
-            if isResponseOK(resp):
-                return resp.text
-            else:
-                return None
-
-    except RequestException as e:
-        log_error('Error during requests to {0} : {1}'.format(url, str(e)))
-        return None
-
-
-def isResponseOK(resp):
-    """
-    Returns True if the response seems to be HTML, False otherwise.
-    """
-    content_type = resp.headers['Content-Type'].lower()
-
-    if resp.status_code != 200:
-        saveToFile("C:\Data\AnalyzeLinks", [resp.status_code, resp.url])
-
-    return (resp.status_code == 200
-            and content_type is not None
-            and content_type.find('html') > -1)
-
-
-def saveToFile(path, links):
-    fileNameWithPath = path + "\\" + "loghttperrcodes.txt"
-    file = open(fileNameWithPath, "a+")
-    for link in links:
-        if link:
-            file.write(str(link) + "\n")
-    file.close()
-
-def getCurrentDateTime():
-    now = datetime.now()
-    return now.strftime("%d_%m_%Y_%H_%M_%S")
-
-
-def createWorkSessionFolder(createInPath):
-    createdFolder = createInPath + "\\" + "session_" + getCurrentDateTime()
-    os.mkdir(createdFolder)
-    return createdFolder
-
-
-def validateUrl(url):
-    ret = True
-
-    if not str(url).startswith("http") and not str(url).startswith("www"):
-        ret = False
-
-    return ret
-
-
-def cleanPageContent(html):
-    soup = BeautifulSoup(html, "html.parser") # create a new bs4 object from the html data loaded
-    for script in soup(["script", "style"]): # remove all javascript and stylesheet code
-        script.extract()
-    # get text
-    text = soup.get_text()
-    # break into lines and remove leading and trailing space on each
-    lines = (line.strip() for line in text.splitlines())
-    # break multi-headlines into a line each
-    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-    # drop blank lines
-    text = '\n'.join(chunk for chunk in chunks if chunk)
-    return text
-
-
-def cleanUrl(url):
-    return str(url).strip()
-
-
-def processUrl(url, outputFolder):
-    if not validateUrl(url):
-        return
-
-    cleanedUrl = cleanUrl(url)
-
-    pageContent = ""
-    pageText = ""
-    try:
-        pageContent = httpget(cleanedUrl)
-        #pageText = cleanPageContent(pageContent)
-    except:
-        print("{0}: error processing resource {1}".format(os.getpid(), url))
-        return
-
-    allCases = re.findall(r'(skandal.*?\b)', pageText, flags=re.IGNORECASE)
-
-    translation_table = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
-    strippedUrl = cleanedUrl.translate(translation_table)[:40]
-
-    outputFileName = outputFolder + "\\" + str(os.getpid()) + "_" + strippedUrl
-
-    if pageContent is not None:
-        pageContentFile = open(outputFileName + ".htm", "w+", encoding="utf-8")
-        pageContentFile.writelines(pageContent)
-        pageContentFile.close()
-
-    #resultFile = open(outputFileName + ".txt", "w+", encoding="utf-8")
-    #resultFile.write(("{0}: {1}".format(len(allCases), allCases)))
-    #resultFile.close()
 
 class ContentScraperAbstract(object):
     __metaclass__ = abc.ABCMeta
@@ -355,7 +246,7 @@ class DelfiContentScraper(ContentScraperAbstract):
             authorBioLinkTag = authorTag.find("a")
             if authorBioLinkTag is not None:
                 authorBioLink = authorBioLinkTag.get("href")
-                bioPageContent = httpget(authorBioLink)
+                bioPageContent = helper.httpget(authorBioLink)
 
                 if bioPageContent is not None:
                     babySoup = BeautifulSoup(bioPageContent, "html.parser")
