@@ -465,9 +465,9 @@ class LrytasContentScraper(ContentScraperAbstract):
         script = self._cleanHtml(script)
 
         pos = script.find("{")
-        pos2 = script.find("\r")
+        pos2 = script.find("};")
 
-        jsonbby = script[pos:pos2 - 1]
+        jsonbby = script[pos:pos2 + 1]
 
         articleJsonObj = json.loads(jsonbby)
 
@@ -534,7 +534,7 @@ class SimpleContentScraper:
         return self._removeEmptyEntries(results)
 
     def _processResource(self, resource):
-        contentScraperStrategy = self._getContentScraperStrategy(resource)
+        contentScraperStrategy = self.getContentScraperStrategy(self._contentFetcherStrategy.getContentScraperSuggestion(resource), resource)
 
         pageContent = self._contentFetcherStrategy.getContent(resource)
         result = []
@@ -558,7 +558,7 @@ class SimpleContentScraper:
                     result.append(savedContentFileName)
         except Exception as ex:
             result.clear()
-            print(str(os.getpid()) + " failed to process: " + url)
+            print(str(os.getpid()) + " failed to process: " + resource)
             self._log(ex, resource)
 
         return result
@@ -609,8 +609,8 @@ class SimpleContentScraper:
             currentResult.append(count)
         return currentResult
 
-    def _getContentScraperStrategy(self, resource):
-        suggestion = self._contentFetcherStrategy.getContentScraperSuggestion(resource)
+    @staticmethod
+    def getContentScraperStrategy(suggestion, resource):
         contentScraperStrategy = ContentScraperAbstract()
 
         if suggestion == "www.15min.lt":
@@ -698,9 +698,7 @@ class FileContentFetcher(ContentFetcherAbstract):
     def getContent(self, resource):
         resourceFile = open(resource, "r", encoding="utf-8")
         fileContent = resourceFile.readlines()
-
         mergedFileContent = self._getMergedFileContent(fileContent)
-
         return mergedFileContent
 
     def getResourceName(self, resource):
@@ -830,7 +828,7 @@ def main():
     filesPathFileContentFetcher = "C:\Data\deliverables\iteration3\sources"
 
     cpuCount = multiprocessing.cpu_count()
-    cpuCount = 1 #Test
+    #cpuCount = 1 #Test
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
     #simpleContentScraper = SimpleContentScraper(HttpContentFetcher(linksFile), workSessionFolder, cpuCount, regexCompliancePatterns)

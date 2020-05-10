@@ -1,5 +1,7 @@
 import abc
 
+import csv
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -26,6 +28,14 @@ from os.path import isfile, join
 
 from datetime import datetime, date, timedelta
 
+from AnalyzeLinks import ContentFetcherAbstract
+from AnalyzeLinks import FileContentFetcher
+
+from AnalyzeLinks import SimpleContentScraper
+from AnalyzeLinks import FifteenContentScraper
+from AnalyzeLinks import DelfiContentScraper
+from AnalyzeLinks import LrytasContentScraper
+
 def cleanPageContent(html):
     soup = BeautifulSoup(html, "html.parser") # create a new bs4 object from the html data loaded
     for script in soup(["script", "style"]): # remove all javascript and stylesheet code
@@ -41,41 +51,61 @@ def cleanPageContent(html):
 
     return text
 
-def main():
-    mypath = "C:\Data\deliverables\sources"
-    onlyfiles = [f for f in listdir(mypath) if isfile(join(mypath, f))]
+def processWork(work, fetcher):
+    scraper = SimpleContentScraper.getContentScraperStrategy(fetcher.getContentScraperSuggestion(work), work)
+    scraper.createParser(fetcher.getContent(work))
+    articleScopes = scraper.getArticleScope()
 
     wordsDict = {}
 
-    i = 0
-    for file in onlyfiles:
-        f = open(mypath + "\\" + file, "r", encoding="utf-8")
-        content = f.readlines()
-        f.close()
+    text = ""
+    for scope in articleScopes:
+        try:
+            text += " " + scope.text
+        except:
+            text += " " + scope
 
-        verylong = ""
-        for c in content:
-            verylong += str(c)
+    translation_table = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[]-;<>/\|~1234567890\,.:"„“'), None)
+    text = text.translate(translation_table)
+    text = text.replace("\n", " ")
+    text = text.replace("\t", "")
 
-        textContent = cleanPageContent(verylong)
+    for word in text.split(" "):
+        if len(word) == 0:
+            continue
 
-        # reuse scraper to read only the articleScope parts
-        translation_table = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[]-;<>/\|~1234567890\,.:"„“'), None)
-        textContent = textContent.translate(translation_table)
-        textContent = textContent.replace("\n", " ")
+        if word not in wordsDict:
+            wordsDict[word] = 1
+        else:
+            wordsDict[word] = wordsDict[word] + 1
 
-        for word in textContent.split(" "):
-            if word not in wordsDict:
-                wordsDict[word] = 1
+    return wordsDict
+
+def getCurrentDateTime():
+    now = datetime.now()
+    return now.strftime("%d_%m_%Y_%H_%M_%S")
+
+def main():
+    mypath = "C:\Data\deliverables\iteration3\sources"
+    dictionariesPath = "C:\Data\Dictionary"
+    cpuCount = multiprocessing.cpu_count()
+
+    fetcher = FileContentFetcher(mypath)
+    workList = tqdm(fetcher.getWorkList())
+
+    wordDictionaries = Parallel(n_jobs=cpuCount)(delayed(processWork)(work, fetcher) for work in workList)
+
+    wordDict = {}
+    for dictionary in wordDictionaries:
+        for key in dictionary:
+            if key not in wordDict:
+                wordDict[key] = dictionary[key]
             else:
-                wordsDict[word] = wordsDict[word] + 1
+                wordDict[key] = wordDict[key] + dictionary[key]
 
-        i += 1
-
-        if i == 50:
-            break
-
-    print(wordsDict)
+    with open(dictionariesPath + "\\" + "dictionary_" + getCurrentDateTime(), "w+", encoding="utf-8", newline='') as resultFile:
+        writer = csv.writer(resultFile)
+        writer.writerows(wordDict)
 
 if __name__ == '__main__':
     main()
