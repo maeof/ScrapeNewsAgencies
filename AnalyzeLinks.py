@@ -19,6 +19,9 @@ from bs4 import BeautifulSoup
 import json
 
 import os
+from os import listdir
+from os.path import isfile, join
+
 from datetime import datetime
 from datetime import date
 import time
@@ -576,16 +579,10 @@ class SimpleContentScraper:
         now = datetime.now()
         return now.strftime("%Y_%m_%d_%H_%M_%S")
 
-    def _savePageContentToFile(self, url, pageContent):
-        parsedUrl = urlparse(url)
+    def _savePageContentToFile(self, resource, pageContent):
+        resourceName = self._contentFetcherStrategy.getFullSafeResourceName(resource)
 
-        translationTable = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
-        strippedPath = parsedUrl.path.translate(translationTable)[:40]
-
-        strippedHostname = parsedUrl.hostname.replace("w", "").replace(".", "")
-        safeUrl = strippedHostname + "_" + strippedPath
-
-        outputFileName = self._workSessionFolder + "\\" + str(os.getpid()) + "_" + self._getCurrentDateTime() + safeUrl + ".htm"
+        outputFileName = self._workSessionFolder + "\\" + str(os.getpid()) + "_" + self._getCurrentDateTime() + resourceName + ".htm"
 
         pageContentFile = open(outputFileName, "w+", encoding="utf-8")
         pageContentFile.writelines(pageContent)
@@ -672,21 +669,60 @@ class ContentFetcherAbstract(object):
     def getResourceName(self, resource):
         """Required Method"""
 
+    @abc.abstractmethod
+    def getFullSafeResourceName(self, resource):
+        """Required Method"""
+
 class FileContentFetcher(ContentFetcherAbstract):
-    def __init__(self, inputFilePath):
-        self._inputFilePath = inputFilePath
+    def __init__(self, filesPath):
+        self._filesPath = filesPath
 
     def getWorkList(self):
-        return
+        onlyFiles = [self._filesPath + "\\" + f for f in listdir(self._filesPath) if isfile(join(self._filesPath, f))]
+        return onlyFiles
 
     def getContentScraperSuggestion(self, resource):
-        return
+        contentScraperSuggestion = ""
+
+        if resource.find("15minlt") != -1:
+            contentScraperSuggestion = "www.15min.lt"
+        elif resource.find("delfilt") != -1:
+            contentScraperSuggestion = "www.delfi.lt"
+        elif resource.find("lrytaslt") != -1:
+            contentScraperSuggestion = "www.lrytas.lt"
+        else:
+            raise Exception("Could not pick content scraper strategy for " + url)
+
+        return contentScraperSuggestion
 
     def getContent(self, resource):
-        return
+        resourceFile = open(resource, "r", encoding="utf-8")
+        fileContent = resourceFile.readlines()
+
+        mergedFileContent = self._getMergedFileContent(fileContent)
+
+        return mergedFileContent
 
     def getResourceName(self, resource):
-        return resource
+        return self.getContentScraperSuggestion(resource)
+
+    def getFullSafeResourceName(self, resource):
+        return self._getFullSafeResourceName(resource)
+
+    def _getFullSafeResourceName(self, resource):
+        translationTable = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
+        stripped = resource.translate(translationTable)[:40]
+
+        safeUrl = stripped
+        return safeUrl
+
+    def _getMergedFileContent(self, fileContent):
+        mergedFileContent = ""
+
+        for line in fileContent:
+            mergedFileContent += str(line)
+
+        return mergedFileContent
 
 class HttpContentFetcher(ContentFetcherAbstract):
     def __init__(self, inputFilePath):
@@ -703,6 +739,18 @@ class HttpContentFetcher(ContentFetcherAbstract):
 
     def getContent(self, resource):
         return self._httpget(resource)
+
+    def getFullSafeResourceName(self, resource):
+        return self._getFullSafeResourceName(resource)
+
+    def _getFullSafeResourceName(self, url):
+        parsedUrl = urlparse(url)
+        translationTable = dict.fromkeys(map(ord, '!@#$%^&?*()_+=[];/\\,.:'), None)
+        strippedPath = parsedUrl.path.translate(translationTable)[:40]
+
+        strippedHostname = parsedUrl.hostname.replace("w", "").replace(".", "")
+        safeUrl = strippedHostname + "_" + strippedPath
+        return safeUrl
 
     def _getSourceHostname(self, url):
         return urlparse(url).hostname
@@ -779,11 +827,16 @@ def main():
     workSessionFolder = createWorkSessionFolder(workFolder)
     resultFile = workSessionFolder + "\\" + "result.csv"
 
+    filesPathFileContentFetcher = "C:\Data\deliverables\iteration3\sources"
+
     cpuCount = multiprocessing.cpu_count()
     cpuCount = 1 #Test
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
-    simpleContentScraper = SimpleContentScraper(HttpContentFetcher(linksFile), workSessionFolder, cpuCount, regexCompliancePatterns)
+    #simpleContentScraper = SimpleContentScraper(HttpContentFetcher(linksFile), workSessionFolder, cpuCount, regexCompliancePatterns)
+    #scrapeResult = simpleContentScraper.scrape()
+
+    simpleContentScraper = SimpleContentScraper(FileContentFetcher(filesPathFileContentFetcher), workSessionFolder, cpuCount, regexCompliancePatterns)
     scrapeResult = simpleContentScraper.scrape()
 
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
