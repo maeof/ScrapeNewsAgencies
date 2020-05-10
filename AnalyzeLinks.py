@@ -179,10 +179,6 @@ class ContentScraperAbstract(object):
         """Required Method"""
 
     @abc.abstractmethod
-    def getPageContent(self, resourceLink):
-        """Required Method"""
-
-    @abc.abstractmethod
     def createParser(self, pageContent):
         """Required Method"""
 
@@ -259,9 +255,6 @@ class FifteenContentScraper(ContentScraperAbstract):
 
     def isArticleCompliant(self):
         return True
-
-    def getPageContent(self, resourceLink):
-        return httpget(resourceLink)
 
     def createParser(self, pageContent):
         self._pageContent = pageContent
@@ -387,9 +380,6 @@ class DelfiContentScraper(ContentScraperAbstract):
 
     def isArticleCompliant(self):
         return True
-
-    def getPageContent(self, resourceLink):
-        return httpget(resourceLink)
 
     def createParser(self, pageContent):
         self._pageContent = pageContent
@@ -521,84 +511,66 @@ class LrytasContentScraper(ContentScraperAbstract):
 
         return articleDate
 
-    def getPageContent(self, resourceLink):
-        time.sleep(1)
-        return httpget(resourceLink)
-
     def createParser(self, pageContent):
         self._pageContent = pageContent
         self._soup = BeautifulSoup(pageContent, "html.parser")
 
 class SimpleContentScraper:
-    def __init__(self, inputFilePath, workSessionFolder, cpuCount, regexCompliancePatterns):
-        self._inputFilePath = inputFilePath
+    def __init__(self, contentFetcherStrategy, workSessionFolder, cpuCount, regexCompliancePatterns):
+        self._contentFetcherStrategy = contentFetcherStrategy
         self._workSessionFolder = workSessionFolder
         self._cpuCount = cpuCount
         self._regexCompliancePatterns = regexCompliancePatterns
 
     def scrape(self):
-        fileContent = self.getContentFromInputFile() #TODO: strategies: cache, web
-        fileContent = self.filterFile(fileContent)
-        workUrls = tqdm(fileContent)
+        workList = tqdm(self._contentFetcherStrategy.getWorkList())
 
-        results = Parallel(n_jobs=self._cpuCount)(delayed(self.processUrl)(url) for url in workUrls)
-        results.insert(0, self.getDataSetHeader())
-        return self.removeEmptyEntries(results)
+        results = Parallel(n_jobs=self._cpuCount)(delayed(self._processResource)(resource) for resource in workList)
 
-    def filterFile(self, fileContent):
-        doNotIncludeTheseLinksPlease = ["video", "multimedija"]
-        filteredFileContent = []
-        for url in fileContent:
-            parsedUrl = urlparse(url)
-            firstPathInUrl = parsedUrl.path[1:parsedUrl.path.find("/", 1)]
-            if firstPathInUrl in doNotIncludeTheseLinksPlease:
-                continue
-            filteredFileContent.append(url)
-        return filteredFileContent
+        results.insert(0, self._getDataSetHeader())
+        return self._removeEmptyEntries(results)
 
-    def removeEmptyEntries(self, entries):
-        cleanedEntries = [x for x in entries if x != []]
-        return cleanedEntries
+    def _processResource(self, resource):
+        contentScraperStrategy = self._getContentScraperStrategy(resource)
 
-    def getDataSetHeader(self):
-        dataSetHeader = ["Source", "Title", "Category", "Date published", "Date modified", "Author", "Author position"]
-        for pattern in self._regexCompliancePatterns:
-            dataSetHeader.append("Count of {0}".format(pattern))
-        dataSetHeader.append("Url")
-        dataSetHeader.append("Path to local source")
-        return dataSetHeader
-
-    def processUrl(self, url):
-        cleanUrl = self.cleanurl(url)
-        contentScraperStrategy = self.getContentScraperStrategy(url)
-
-        # TODO: strategies: cache, web. for cache read file, for web GET
-        pageContent = contentScraperStrategy.getPageContent(cleanUrl)
+        pageContent = self._contentFetcherStrategy.getContent(resource)
         result = []
         try:
             if pageContent is not None:
                 contentScraperStrategy.createParser(pageContent) #TODO: rename to init
-                allMatches = self.getPatternMatches(contentScraperStrategy.getArticleScope())
+                allMatches = self._getPatternMatches(contentScraperStrategy.getArticleScope())
 
-                if self.isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
-                    result.append(self.getSourceHostname(cleanUrl))
+                if self._isArticleCompliant(allMatches) and contentScraperStrategy.isArticleCompliant():
+                    result.append(self._contentFetcherStrategy.getResourceName(resource))
                     result.append(contentScraperStrategy.getArticleTitle())
                     result.append(contentScraperStrategy.getArticleCategory())
                     result.append(contentScraperStrategy.getArticleDatePublished())
                     result.append(contentScraperStrategy.getArticleDateModified())
                     result.append(contentScraperStrategy.getArticleAuthor())
                     result.append(contentScraperStrategy.getArticleAuthorPosition())
-                    result = self.getPatternMatchesColumns(result, allMatches)
-                    result.append(cleanUrl)
+                    result = self._getPatternMatchesColumns(result, allMatches)
+                    result.append(resource)
 
-                    savedContentFileName = self._savePageContentToFile(cleanUrl, pageContent)
+                    savedContentFileName = self._savePageContentToFile(resource, pageContent)
                     result.append(savedContentFileName)
         except Exception as ex:
             result.clear()
             print(str(os.getpid()) + " failed to process: " + url)
-            self._log(ex, cleanUrl)
+            self._log(ex, resource)
 
         return result
+
+    def _removeEmptyEntries(self, entries):
+        cleanedEntries = [x for x in entries if x != []]
+        return cleanedEntries
+
+    def _getDataSetHeader(self):
+        dataSetHeader = ["Source", "Title", "Category", "Date published", "Date modified", "Author", "Author position"]
+        for pattern in self._regexCompliancePatterns:
+            dataSetHeader.append("Count of {0}".format(pattern))
+        dataSetHeader.append("Url")
+        dataSetHeader.append("Path to local source")
+        return dataSetHeader
 
     def _getCurrentDateTime(self):
         now = datetime.now()
@@ -632,10 +604,7 @@ class SimpleContentScraper:
         except:
             print("lol failed to write to the log file but please do continue: " + url)
 
-    def getSourceHostname(self, url):
-        return urlparse(url).hostname
-
-    def getPatternMatchesColumns(self, currentResult, allPatternMatches):
+    def _getPatternMatchesColumns(self, currentResult, allPatternMatches):
         for i in range(0, len(self._regexCompliancePatterns)):
             count = 0
             for matches in allPatternMatches[i]:
@@ -643,31 +612,22 @@ class SimpleContentScraper:
             currentResult.append(count)
         return currentResult
 
-    def getContentScraperStrategy(self, url):
-        parsedUrl = urlparse(url)
+    def _getContentScraperStrategy(self, resource):
+        suggestion = self._contentFetcherStrategy.getContentScraperSuggestion(resource)
         contentScraperStrategy = ContentScraperAbstract()
 
-        if parsedUrl.hostname == "www.15min.lt":
-            contentScraperStrategy = FifteenContentScraper(url)
-        elif parsedUrl.hostname == "www.delfi.lt":
-            contentScraperStrategy = DelfiContentScraper(url)
-        elif parsedUrl.hostname == "www.lrytas.lt":
-            contentScraperStrategy = LrytasContentScraper(url, "c:\\data\\chromedriver\\chromedriver.exe")
+        if suggestion == "www.15min.lt":
+            contentScraperStrategy = FifteenContentScraper(resource)
+        elif suggestion == "www.delfi.lt":
+            contentScraperStrategy = DelfiContentScraper(resource)
+        elif suggestion == "www.lrytas.lt":
+            contentScraperStrategy = LrytasContentScraper(resource, "c:\\data\\chromedriver\\chromedriver.exe")
         else:
-            raise Exception("Could not pick content scraper strategy for " + url)
+            raise Exception("Could not pick content scraper strategy for " + resource)
 
         return contentScraperStrategy
 
-    def getContentFromInputFile(self):
-        inputFile = open(self._inputFilePath, "r")
-        fileContent = inputFile.readlines()
-        inputFile.close()
-        return fileContent
-
-    def cleanurl(self, url):
-        return str(url).strip()
-
-    def getPatternMatches(self, articleScopes):
+    def _getPatternMatches(self, articleScopes):
         allMatches = []
         for pattern in self._regexCompliancePatterns:
             matches = []
@@ -682,7 +642,7 @@ class SimpleContentScraper:
 
         return allMatches
 
-    def isArticleCompliant(self, allMatches):
+    def _isArticleCompliant(self, allMatches):
         isCompliant = False
 
         for i in range(0, len(self._regexCompliancePatterns)):
@@ -697,29 +657,99 @@ class ContentFetcherAbstract(object):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
+    def getWorkList(self):
+        """Required Method"""
+
+    @abc.abstractmethod
+    def getContentScraperSuggestion(self, resource):
+        """Required Method"""
+
+    @abc.abstractmethod
     def getContent(self, resource):
         """Required Method"""
 
+    @abc.abstractmethod
+    def getResourceName(self, resource):
+        """Required Method"""
+
 class FileContentFetcher(ContentFetcherAbstract):
-    def __init__(self):
-        self._a = 1
+    def __init__(self, inputFilePath):
+        self._inputFilePath = inputFilePath
+
+    def getWorkList(self):
+        return
+
+    def getContentScraperSuggestion(self, resource):
+        return
 
     def getContent(self, resource):
         return
 
+    def getResourceName(self, resource):
+        return resource
+
 class HttpContentFetcher(ContentFetcherAbstract):
-    def __init__(self):
-        self._a = 1
+    def __init__(self, inputFilePath):
+        self._inputFilePath = inputFilePath
+
+    def getWorkList(self):
+        return self._getContentFromInputFile()
+
+    def getContentScraperSuggestion(self, resource):
+        return self._getContentScraperSuggestion(resource)
+
+    def getResourceName(self, resource):
+        return self._getSourceHostname(resource)
 
     def getContent(self, resource):
-        return self._get(resource)
+        return self._httpget(resource)
 
-    def _get(self, url):
-        """
-        Attempts to get the content at `url` by making an HTTP GET request.
-        If the content-type of response is some kind of HTML/XML, return the
-        text content, otherwise return None.
-        """
+    def _getSourceHostname(self, url):
+        return urlparse(url).hostname
+
+    def _getContentScraperSuggestion(self, url):
+        parsedUrl = urlparse(url)
+        contentScraperSuggestion = ""
+
+        if parsedUrl.hostname == "www.15min.lt":
+            contentScraperSuggestion = "www.15min.lt"
+        elif parsedUrl.hostname == "www.delfi.lt":
+            contentScraperSuggestion = "www.delfi.lt"
+        elif parsedUrl.hostname == "www.lrytas.lt":
+            contentScraperSuggestion = "www.lrytas.lt"
+        else:
+            raise Exception("Could not pick content scraper strategy for " + url)
+
+        return contentScraperSuggestion
+
+    def _getContentFromInputFile(self):
+        inputFile = open(self._inputFilePath, "r")
+        fileContent = inputFile.readlines()
+        inputFile.close()
+
+        fileContent = self._filterFile(fileContent)
+
+        fileContentCleansed = []
+        for line in fileContent:
+            fileContentCleansed.append(self._cleanurl(line))
+
+        return fileContentCleansed
+
+    def _filterFile(self, fileContent):
+        doNotIncludeTheseLinksPlease = ["video", "multimedija"]
+        filteredFileContent = []
+        for url in fileContent:
+            parsedUrl = urlparse(url)
+            firstPathInUrl = parsedUrl.path[1:parsedUrl.path.find("/", 1)]
+            if firstPathInUrl in doNotIncludeTheseLinksPlease:
+                continue
+            filteredFileContent.append(url)
+        return filteredFileContent
+
+    def _cleanurl(self, url):
+        return str(url).strip()
+
+    def _httpget(self, url):
         try:
             with closing(get(url, stream=True)) as resp:
                 if self._isResponseOK(resp):
@@ -732,9 +762,6 @@ class HttpContentFetcher(ContentFetcherAbstract):
             return None
 
     def _isResponseOK(self, resp):
-        """
-        Returns True if the response seems to be HTML, False otherwise.
-        """
         content_type = resp.headers['Content-Type'].lower()
 
         if resp.status_code != 200:
@@ -746,16 +773,17 @@ class HttpContentFetcher(ContentFetcherAbstract):
 
 def main():
     linksFile = "C:\\Data\\AnalyzeLinks\\links.csv"
+    linksFile = "C:\\Data\\AnalyzeLinks\\linksTest.csv" #Test
 
     workFolder = "C:\Data\AnalyzeLinks"
     workSessionFolder = createWorkSessionFolder(workFolder)
     resultFile = workSessionFolder + "\\" + "result.csv"
 
     cpuCount = multiprocessing.cpu_count()
-    #cpuCount = 1
+    cpuCount = 1 #Test
     regexCompliancePatterns = [r"(skandal.*?\b)"]
 
-    simpleContentScraper = SimpleContentScraper(linksFile, workSessionFolder, cpuCount, regexCompliancePatterns)
+    simpleContentScraper = SimpleContentScraper(HttpContentFetcher(linksFile), workSessionFolder, cpuCount, regexCompliancePatterns)
     scrapeResult = simpleContentScraper.scrape()
 
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
