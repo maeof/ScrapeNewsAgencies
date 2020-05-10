@@ -653,13 +653,6 @@ class SimpleContentScraper:
             contentScraperStrategy = DelfiContentScraper(url)
         elif parsedUrl.hostname == "www.lrytas.lt":
             contentScraperStrategy = LrytasContentScraper(url, "c:\\data\\chromedriver\\chromedriver.exe")
-
-            #pid = os.getpid()
-            #if pid not in globalCdiCache:
-                #chrome_options = Options()
-                #chrome_options.add_argument("--headless")
-                #cdi = webdriver.Chrome("c:\\data\\chromedriver\\chromedriver.exe", options=chrome_options)
-                #globalCdiCache[pid] = cdi
         else:
             raise Exception("Could not pick content scraper strategy for " + url)
 
@@ -768,10 +761,6 @@ def main():
     with open(resultFile, "w+", encoding="utf-8", newline='') as resultFile:
         writer = csv.writer(resultFile)
         writer.writerows(scrapeResult)
-
-    #for eachCdi in globalCdiCache:
-        #if eachCdi:
-            #eachCdi.quit()
 
 if __name__ == '__main__':
     main()
