@@ -3,6 +3,10 @@ import ScraperHelper as helper
 
 from datetime import date
 
+from selenium import webdriver
+from webdriver_manager.chrome import ChromeDriverManager
+
+
 import multiprocessing
 from joblib import Parallel, delayed
 from tqdm import tqdm
@@ -36,8 +40,6 @@ def main():
 
     fromDate = date(2019, 1, 1)
     toDate = date(2019, 12, 31)
-    #toDate = date(2019, 1, 2) #Test
-    #fromDate = date(2020, 5, 9) #Test
 
     fifteenSeedUrl = "https://www.15min.lt/naujienos/aktualu/lietuva"
     fifteenParams = "?offset={0}%2023:59:59" #15min date format: year-month-day
@@ -51,10 +53,9 @@ def main():
     # load we check the last article's date from it's url - if it's still newer than fromDate - we continue the articles loading.
     # This strategy was set up to work like so because there is no trivial way to access the archive in lrytas.lt portal.
     lrytasSeedUrl = "https://www.lrytas.lt/lietuvosdiena/aktualijos/"
-    lrytasWebDriverPath = "c:\\data\\chromedriver\\chromedriver.exe"
+    lrytasWebDriverPath = ChromeDriverManager().install()
 
     cpuCount = multiprocessing.cpu_count()
-    #cpuCount = 1 #Test
 
     fifteenLinkScraper = SimpleLinkScraper(FifteenLinkScraper(cpuCount, fromDate, toDate, fifteenSeedUrl, fifteenParams))
     fifteenLinks = fifteenLinkScraper.getLinks()
